@@ -197,9 +197,9 @@
       "<button type='button' data-tab='traction'>Traction</button>",
       "<button type='button' data-tab='holdings'>Holdings</button>",
       "</div>",
-      "<div id='cmr-panel-setups' class='panel'><div class='muted'>Hypothesis detector — compression ≠ bullish. Holdings-first OHLCV.</div><div id='cmr-setups'></div></div>",
+      "<div id='cmr-panel-setups' class='panel'><div class='muted'>Ranked universe minus holdings — new entry candidates. Candle setups on the top slice; the rest are ranked context only. Compression ≠ bullish.</div><div id='cmr-setups'></div></div>",
       "<div id='cmr-panel-btc' class='panel'><div class='muted'>Filters use excess pp & coin/BTC % — 90d never extrapolated</div>",
-      "<select id='cmr-btc-filter'><option value=''>All holdings-first</option>",
+      "<select id='cmr-btc-filter'><option value=''>Ranked universe</option>",
       "<option value='beating-btc-7d'>Beating BTC (7d)</option>",
       "<option value='beating-btc-30d'>Beating BTC (30d)</option>",
       "<option value='beating-btc-all-available'>Beating BTC (all available)</option>",
@@ -256,35 +256,52 @@
     ensureResearch().querySelector("#cmr-watch-list").textContent = loadWatch().join(" · ") || "(empty)";
   }
 
+  function setupRowHtml(s) {
+    const br = s.btcRelative && s.btcRelative.d7;
+    const brLine = br && br.available ? " · +" + br.excessReturnPp + "pp vs BTC" : "";
+    const ohlcvNote = s.ohlcv && s.ohlcv.approximate ? " · CG approx OHLC" : "";
+    const errNote = s.ohlcvError ? " · " + s.ohlcvError : "";
+    return (
+      "<div class='cmr-row'><span><strong>" + (s.symbol || "?") + "</strong> " +
+      (s.state || "n/a") +
+      "<div class='muted'>ready " + (s.setupReadiness != null ? s.setupReadiness : "—") +
+      " · " + (s.dataConfidence || "") + brLine + ohlcvNote +
+      "</div><div class='muted'>" + ((s.evidence && s.evidence[0]) || "") + errNote + "</div></span></div>"
+    );
+  }
+
   async function loadSetups() {
     const box = ensureResearch().querySelector("#cmr-setups");
-    box.innerHTML = "<div class='muted'>Loading…</div>";
+    box.innerHTML = "<div class='muted'>Scanning ranked universe…</div>";
     try {
       const res = await origFetch(
-        "/api/early-setups?limit=5&candles=1&timeframe=1h&prioritizeHoldings=1&symbols=" +
+        "/api/early-setups?limit=8&offset=0&candles=1&timeframe=1h&excludeHoldings=1&prioritizeHoldings=0&universe=1&symbols=" +
           watchlistQuery()
       );
       const json = await res.json();
       const freshness = json.data && json.data.freshness;
+      const meta = json.metadata || {};
+      const setups = (json.data && json.data.setups) || [];
+      const universe = (json.data && json.data.universe) || [];
+      const scanned = new Set(setups.map(function (s) { return String(s.symbol || "").toUpperCase(); }));
       let html = "";
       if (freshness && freshness.status !== "fresh") {
         html += "<div class='warn'>Gated: momentum data is " + freshness.status + "</div>";
       }
-      const setups = (json.data && json.data.setups) || [];
-      if (!setups.length) html += "<div class='muted'>No setups</div>";
-      html += setups.slice(0, 10).map(function (s) {
-        const br = s.btcRelative && s.btcRelative.d7;
-        const brLine = br && br.available ? " · +" + br.excessReturnPp + "pp vs BTC" : "";
-        const ohlcvNote = s.ohlcv && s.ohlcv.approximate ? " · CG approx OHLC" : "";
-        const errNote = s.ohlcvError ? " · " + s.ohlcvError : "";
-        return (
-          "<div class='cmr-row'><span><strong>" + (s.symbol || "?") + "</strong> " +
-          (s.state || "n/a") +
-          "<div class='muted'>ready " + (s.setupReadiness != null ? s.setupReadiness : "—") +
-          " · " + (s.dataConfidence || "") + brLine + ohlcvNote +
-          "</div><div class='muted'>" + ((s.evidence && s.evidence[0]) || "") + errNote + "</div></span></div>"
-        );
-      }).join("");
+      html += "<div class='muted'>Universe " + (meta.universeTotal != null ? meta.universeTotal : universe.length) +
+        " new coins (holdings excluded). Candle scan " + setups.length + ".</div>";
+      if (!setups.length && !universe.length) html += "<div class='muted'>No universe rows</div>";
+      html += setups.map(setupRowHtml).join("");
+      const rest = universe.filter(function (u) { return !scanned.has(String(u.symbol || "").toUpperCase()); });
+      if (rest.length) {
+        html += "<div class='muted' style='margin-top:8px'>Rest of universe — ranked, not candle-scanned</div>";
+        html += rest.map(function (u) {
+          const ex = u.excess7dPp != null ? " · " + u.excess7dPp + "pp vs BTC" : "";
+          return "<div class='cmr-row'><span><strong>" + (u.symbol || "?") + "</strong>" +
+            "<div class='muted'>score " + (u.score != null ? u.score : "—") +
+            " · " + (u.momentumState || "ranked") + ex + "</div></span></div>";
+        }).join("");
+      }
       box.innerHTML = html;
     } catch (_) {
       box.innerHTML = "<div class='warn'>Early setups unavailable</div>";
@@ -296,12 +313,11 @@
     const filter = ensureResearch().querySelector("#cmr-btc-filter").value;
     box.innerHTML = "<div class='muted'>Loading…</div>";
     try {
-      const q = filter ? "&filter=" + encodeURIComponent(filter) : "";
-      const res = await origFetch("/api/momentum?prioritizeHoldings=1" + q);
+      const res = await origFetch("/api/momentum" + (filter ? "?filter=" + encodeURIComponent(filter) : ""));
       const json = await res.json();
       const rows = (json.data && json.data.rows) || [];
       const watch = new Set(loadWatch());
-      const show = rows.filter(function (r) { return watch.has(String(r.symbol).toUpperCase()) || !filter; }).slice(0, 12);
+      const show = rows.slice(0, 40);
       if (!show.length) {
         box.innerHTML = "<div class='muted'>No rows for filter</div>";
         return;
@@ -313,7 +329,7 @@
         const d90 = br.d90 && br.d90.available ? br.d90.excessReturnPct || br.d90.excessReturnPp + "pp" : "N/A";
         return (
           "<div class='cmr-row'><span><strong>" + r.symbol + "</strong>" +
-          (r.onWatchlist ? " ★" : "") +
+          (watch.has(String(r.symbol).toUpperCase()) ? " ★" : "") +
           "<div class='muted'>7d excess " + d7 + " · 30d " + d30 + " · 90d " + d90 + "</div></span></div>"
         );
       }).join("");
@@ -333,7 +349,7 @@
     box.innerHTML = "<div class='muted'>Loading setups then traction…</div>";
     try {
       const res = await origFetch(
-        "/api/early-setups?limit=5&candles=1&timeframe=1h&prioritizeHoldings=1&symbols=" +
+        "/api/early-setups?limit=8&offset=0&candles=1&timeframe=1h&excludeHoldings=1&prioritizeHoldings=0&universe=0&symbols=" +
           watchlistQuery()
       );
       const json = await res.json();
@@ -341,7 +357,7 @@
         return s.state === "Coiling" || s.state === "Igniting";
       }).slice(0, 3);
       if (!candidates.length) {
-        box.innerHTML = "<div class='muted'>No Coiling/Igniting candidates in sample — traction check waits for those states.</div>";
+        box.innerHTML = "<div class='muted'>No Coiling/Igniting in the top universe slice — traction waits for those states.</div>";
         return;
       }
       const cards = [];
