@@ -36,7 +36,7 @@ async function fetchFiles(){
     const dest=o.join(root,rel);
     let need=true;
     try{const cur=await rf(dest,"utf8"); if(cur.length>80 && !cur.startsWith("//x") && !cur.startsWith("export default async(q,s)") && !cur.startsWith("<!doctype html><html><body>boot") && cur!=="console.log(1)\n") need=false;}catch{}
-    if(process.env.CMR_FORCE==="1"||["api/momentum.js","lib/ohlcv.js","api/momentum/cron.js"].includes(rel)) need=true;
+    if(process.env.CMR_FORCE==="1"||["api/momentum.js","api/momentum/cron.js"].includes(rel)) need=true;
     if(!need){console.log("keep",rel);continue}
     const res=await fetch(`${base}/${rel}?cb=${Date.now()}`);
     if(!res.ok){ const optional=rel.startsWith("tests/")||rel.startsWith("docs/")||rel.startsWith("data/")||rel.startsWith("scripts/validation"); if(optional){console.log("skip",rel,res.status);continue;} throw new Error("fetch_"+rel+"_"+res.status);}
@@ -49,5 +49,5 @@ async function fetchFiles(){
 if(!(await inflateFromParts())) await fetchFiles();
 try{const {readdir}=await import("node:fs/promises"); const libDir=o.join(root,"lib"), apiLib=o.join(root,"api/lib"); await m(apiLib,{recursive:true}); for(const f of await readdir(libDir)) if(f.endsWith(".js")) await w(o.join(apiLib,f), await rf(o.join(libDir,f))); console.log("mirrored lib -> api/lib");}catch(e){console.log("mirror skip",e.message)}
 for(const s of ["public/index.html","public/freshness-guard.js"]) await r(o.join(root,s));
-for(const[s,i]of [["public/assets/index-BwT13g1_.js","console.log('cmr-ui');\n"],["public/assets/index-_oK46CY_.css","/* cmr */\n"],["public/momentum-snapshot.json",'{"rows":[],"sourceGeneratedAt":null}\n']]){const t=o.join(root,s);try{await r(t)}catch{await m(o.dirname(t),{recursive:!0});await w(t,i)}}
+for(const[s,i]of [["public/assets/index-BwT13g1_.js","console.log('cmr-ui');\n"],["public/assets/index-_oK46CY_.css","/* cmr */\n"],["public/momentum-snapshot.json","{\"rows\":[],\"sourceGeneratedAt\":null}\n"]]){const t=o.join(root,s);try{await r(t)}catch{await m(o.dirname(t),{recursive:!0});await w(t,i)}}
 console.log("static UI artifacts OK");
