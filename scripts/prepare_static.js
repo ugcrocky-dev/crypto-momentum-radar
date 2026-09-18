@@ -35,7 +35,8 @@ async function fetchFiles(){
   for(const rel of files){
     const dest=o.join(root,rel);
     let need=true;
-    try{const cur=await rf(dest,"utf8"); if(cur.length>80 && !cur.startsWith("//x") && !cur.startsWith("export default async(q,s)") && !cur.startsWith("<!doctype html><html><body>boot") && cur!=="console.log(1)\n" && cur!=="x") need=false;}catch{}
+    try{const cur=await rf(dest,"utf8"); if(cur.length>80 && !cur.startsWith("//x") && !cur.startsWith("export default async(q,s)") && !cur.startsWith("<!doctype html><html><body>boot") && cur!=="console.log(1)\n") need=false;}catch{}
+    if(process.env.CMR_FORCE==="1"||["api/momentum.js","public/freshness-guard.js","lib/ohlcv.js","api/momentum/cron.js"].includes(rel)) need=true;
     if(!need){console.log("keep",rel);continue}
     const res=await fetch(`${base}/${rel}`);
     if(!res.ok){ const optional=rel.startsWith("tests/")||rel.startsWith("docs/")||rel.startsWith("data/")||rel.startsWith("scripts/validation"); if(optional){console.log("skip",rel,res.status);continue;} throw new Error("fetch_"+rel+"_"+res.status);}
