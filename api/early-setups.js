@@ -48,15 +48,18 @@ export default async function handler(req, res) {
 
   const url = new URL(req.url || "/", "http://localhost");
   const timeframe = url.searchParams.get("timeframe") || "1h";
-  const limit = Math.min(30, Number(url.searchParams.get("limit") || 20));
+  const limit = Math.min(12, Math.max(1, Number(url.searchParams.get("limit") || 8)));
+  const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0) || 0));
   const withCandles = url.searchParams.get("candles") !== "0";
   const withSocial = url.searchParams.get("social") === "1";
   const watchOnly = url.searchParams.get("watchlist") === "1";
-  // Default ON: prefer holdings / symbols with CG coverage over raw top-rank alts
-  // that often fail Binance 451 from Vercel egress.
-  const prioritizeHoldings = url.searchParams.get("prioritizeHoldings") !== "0";
+  // Holdings mode is opt-in. Research scans the ranked universe so new coins can surface.
+  const prioritizeHoldings = url.searchParams.get("prioritizeHoldings") === "1";
+  const excludeHoldings = url.searchParams.get("excludeHoldings") === "1";
+  const wantUniverse = url.searchParams.get("universe") !== "0";
   const symbolsParam = parseSymbolsParam(url.searchParams.get("symbols"));
   const focusList = symbolsParam.length ? symbolsParam : DEFAULT_WATCHLIST;
+  const holdSet = new Set(focusList);
 
   const nowMs = Date.now();
   let momentum;
@@ -88,14 +91,14 @@ export default async function handler(req, res) {
 
   let rows = Array.isArray(momentum?.data?.rows) ? momentum.data.rows.slice() : [];
   if (watchOnly) {
-    const set = new Set(focusList);
-    rows = rows.filter((r) => set.has(String(r.symbol).toUpperCase()));
+    rows = rows.filter((r) => holdSet.has(String(r.symbol).toUpperCase()));
+  } else if (excludeHoldings) {
+    rows = rows.filter((r) => !holdSet.has(String(r.symbol).toUpperCase()));
   } else if (prioritizeHoldings) {
     rows = prioritizeRows(rows, focusList);
   }
-  // Prefer rows that already have a CoinGecko mapping when candle work is requested,
-  // so the panel is not dominated by ohlcv_unavailable proxies.
-  if (withCandles && prioritizeHoldings) {
+  // Holdings mode only: prefer symbols that already have a CoinGecko id.
+  if (withCandles && prioritizeHoldings && !excludeHoldings) {
     const mapped = [];
     const unmapped = [];
     for (const row of rows) {
@@ -105,7 +108,20 @@ export default async function handler(req, res) {
     }
     rows = [...mapped, ...unmapped];
   }
-  rows = rows.slice(0, limit);
+
+  const universeTotal = rows.length;
+  const universe = wantUniverse
+    ? rows.map((r) => ({
+        symbol: r.symbol,
+        name: r.name || null,
+        rank: r.rank ?? null,
+        score: r.score ?? null,
+        momentumState: r.state || null,
+        excess7dPp: r.btcRelative?.d7?.excessReturnPp ?? null,
+      }))
+    : undefined;
+  const page = rows.slice(offset, offset + limit);
+  rows = page;
 
   const setups = [];
   let candleFetchesDisabled = false;
@@ -221,10 +237,16 @@ export default async function handler(req, res) {
       metadata: {
         timeframe,
         limit,
+        offset,
         withCandles,
         withSocial,
         prioritizeHoldings,
-        focusList,
+        excludeHoldings,
+        universeTotal,
+        scanned: rows.length,
+        nextOffset: offset + rows.length,
+        done: offset + rows.length >= universeTotal,
+        focusList: excludeHoldings ? focusList : prioritizeHoldings || watchOnly ? focusList : null,
         fetchedAt: new Date(nowMs).toISOString(),
         momentumSource: momentum?.source || null,
       },
@@ -241,6 +263,7 @@ export default async function handler(req, res) {
           ...(freshness.reason ? { reason: freshness.reason } : {}),
         },
         setups,
+        ...(universe ? { universe } : {}),
         methodology: {
           states: ["Coiling", "Igniting", "Confirmed", "Failed", "Expired"],
           note: "Compression is direction-neutral. Setup readiness ≠ directional confidence. Hypothesis weights — not proven optimal. Not trade advice. Social never overrides invalid technical conditions. When Binance is geo-blocked, CoinGecko approximate OHLC may be used.",
