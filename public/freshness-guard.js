@@ -126,8 +126,8 @@
     ensureStyles();
     let el = document.getElementById("cmr-research");
     if (el) return el;
-    try { activeTab = localStorage.getItem(TAB_KEY, activeTab); } catch (_) {}
-     el = document.createElement("aside");
+    try { activeTab = localStorage.getItem(TAB_KEY) || "setups"; } catch (_) {}
+    el = document.createElement("aside");
     el.id = "cmr-research";
     el.innerHTML = [
       "<h3>Research</h3>",
@@ -333,7 +333,7 @@
     const res = await origFetch(input, init);
     try {
       const url = typeof input === "string" ? input : input && input.url;
-      if (!murl || !res.ok) return res;
+      if (!url || !res.ok) return res;
       if (url.includes("/api/momentum/cron")) return res;
       // Side-effect only: never rewrite Response bodies (avoids Content-Length
       // truncation that crashed the React app with undefined.toLowerCase).
