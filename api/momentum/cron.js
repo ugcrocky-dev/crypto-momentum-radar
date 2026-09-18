@@ -21,11 +21,12 @@ function unauthorized(res) {
 
 function assertCronAuth(req) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
+  if (!secret) return true; // allow when unset (local / first boot) — production should set it
   const auth = req.headers.authorization || "";
   const header = req.headers["x-cron-secret"];
   if (auth === `Bearer ${secret}`) return true;
   if (header && header === secret) return true;
+  // Vercel cron sends Authorization: Bearer <CRON_SECRET> when configured
   return false;
 }
 
@@ -39,6 +40,11 @@ function isValidPeerPayload(json) {
   );
 }
 
+/**
+ * Sync from a healthy peer (default: RackNerd VPS Momentum Radar).
+ * This recovers production when the local provider pipeline / lock is broken
+ * while a peer continues to produce valid snapshots.
+ */
 async function fetchPeerSnapshot() {
   const peer =
     process.env.MOMENTUM_PEER_URL ||
@@ -118,6 +124,7 @@ export default async function handler(req, res) {
       cadence: MAIN_CADENCE,
     });
 
+    // Only persist if peer data itself is reasonably fresh (< 6h)
     const ageMs = data.freshness?.ageMs;
     if (ageMs == null || ageMs > 6 * 60 * 60 * 1000) {
       throw new Error("peer_snapshot_too_old");
@@ -137,6 +144,7 @@ export default async function handler(req, res) {
       },
       data: {
         ...peer.data,
+        // store raw timestamps; freshness recomputed on read
         freshness: {
           status: "fresh",
           ageHours: 0,
@@ -172,6 +180,7 @@ export default async function handler(req, res) {
     );
   } catch (err) {
     const message = sanitizeError(err);
+    // Preserve existing snapshot — do not write empty/invalid data
     let existing = null;
     try {
       existing = await readSnapshotEnvelope();
