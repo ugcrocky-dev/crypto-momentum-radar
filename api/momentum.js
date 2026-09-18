@@ -6,6 +6,8 @@ import {
   MAIN_CADENCE,
   sanitizeError,
 } from "../lib/freshness.js";
+import { enrichSnapshotBtcRelative } from "../lib/btcRelative.js";
+import { prioritizeRows, DEFAULT_WATCHLIST } from "../lib/watchlist.js";
 import {
   readRefreshStatus,
   readSnapshotEnvelope,
@@ -237,10 +239,25 @@ export default async function handler(req, res) {
     return;
   }
 
-  const data = applyFreshnessToSnapshot(envelope.data, {
-    nowMs,
-    cadence: MAIN_CADENCE,
-  });
+  const data = enrichSnapshotBtcRelative(
+    applyFreshnessToSnapshot(envelope.data, {
+      nowMs,
+      cadence: MAIN_CADENCE,
+    })
+  );
+
+  // Optional watchlist prioritization via ?watchlist=XRP,SOL or default holdings
+  const reqUrl = new URL(req.url || "/", "http://localhost");
+  const watchParam = reqUrl.searchParams.get("watchlist");
+  const watchlist = watchParam
+    ? watchParam.split(/[\s,]+/).filter(Boolean)
+    : reqUrl.searchParams.get("prioritizeHoldings") === "1"
+      ? DEFAULT_WATCHLIST
+      : null;
+  if (watchlist && Array.isArray(data.rows)) {
+    data.rows = prioritizeRows(data.rows, watchlist);
+    data.watchlist = watchlist;
+  }
 
   const validation =
     envelope.validation ||
