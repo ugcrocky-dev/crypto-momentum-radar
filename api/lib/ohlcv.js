@@ -178,8 +178,24 @@ export async function fetchCoinGeckoApprox(coinId, timeframe = "1h", limit = 100
   }
 }
 
+const SYMBOL_COINGECKO_IDS = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+  BNB: "binancecoin",
+  XRP: "ripple",
+  ADA: "cardano",
+  DOGE: "dogecoin",
+  AVAX: "avalanche-2",
+  DOT: "polkadot",
+  LINK: "chainlink",
+};
+
 export async function fetchCandles({ symbol, coinId, timeframe = "1h", limit = 100 } = {}) {
   const errors = [];
+  const resolvedCoinId =
+    coinId ||
+    (symbol ? SYMBOL_COINGECKO_IDS[String(symbol).trim().toUpperCase()] : null);
   if (symbol) {
     try {
       return await fetchBinanceKlines(symbol, timeframe, limit);
@@ -187,9 +203,9 @@ export async function fetchCandles({ symbol, coinId, timeframe = "1h", limit = 1
       errors.push(sanitizeError(err));
     }
   }
-  if (coinId) {
+  if (resolvedCoinId) {
     try {
-      return await fetchCoinGeckoApprox(coinId, timeframe, limit);
+      return await fetchCoinGeckoApprox(resolvedCoinId, timeframe, limit);
     } catch (err) {
       errors.push(sanitizeError(err));
     }
