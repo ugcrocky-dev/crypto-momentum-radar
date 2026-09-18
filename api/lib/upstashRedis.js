@@ -2,6 +2,8 @@
  * Minimal Upstash Redis REST client.
  * Env: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
  * (also accepts KV_REST_API_URL / KV_REST_API_TOKEN aliases used by Vercel KV)
+ *
+ * Tries JSON-body POST first, then path-style used by some KV gateways.
  */
 
 export class MomentumRedisError extends Error {
@@ -29,6 +31,16 @@ export function redisConfigured() {
   return Boolean(url && token);
 }
 
+async function parseBody(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text.slice(0, 200) };
+  }
+}
+
 /**
  * @param {Array<string|number>} args Redis command parts
  */
@@ -38,21 +50,39 @@ export async function command(args) {
     throw new MomentumRedisError("Redis is not configured");
   }
 
-  let res;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  // 1) Upstash JSON body protocol
   try {
-    res = await fetch(`${url}`, {
+    const res = await fetch(`${url}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(args),
     });
+    const body = await parseBody(res);
+    if (res.ok && !body.error) return body.result;
+    if (res.status !== 400 && res.status !== 404) {
+      throw new MomentumRedisError(
+        `Redis command failed (${res.status})`,
+        body?.error || body
+      );
+    }
+  } catch (err) {
+    if (err instanceof MomentumRedisError) throw err;
+  }
+
+  // 2) Path-style fallback
+  const path = args.map((p) => encodeURIComponent(String(p))).join("/");
+  let res;
+  try {
+    res = await fetch(`${url}/${path}`, { method: "POST", headers });
   } catch (err) {
     throw new MomentumRedisError("Redis network error", err);
   }
-
-  const body = await res.json().catch(() => ({}));
+  const body = await parseBody(res);
   if (!res.ok) {
     throw new MomentumRedisError(
       `Redis command failed (${res.status})`,
@@ -81,9 +111,6 @@ export async function setJson(key, value) {
   return command(["SET", key, payload]);
 }
 
-/**
- * SET key value NX EX seconds — returns "OK" if acquired, null if held.
- */
 export async function setNxEx(key, value, ttlSeconds) {
   return command(["SET", key, value, "NX", "EX", String(ttlSeconds)]);
 }

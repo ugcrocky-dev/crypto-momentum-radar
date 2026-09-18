@@ -17,7 +17,9 @@
 export const MAIN_CADENCE = {
   name: "main-momentum",
   intervalMs: 15 * 60 * 1000,
+  /** fresh while younger than ~3 cadence intervals */
   freshMs: 45 * 60 * 1000,
+  /** stale until 3 hours */
   staleMs: 3 * 60 * 60 * 1000,
 };
 
@@ -30,10 +32,15 @@ export const HIGH_FREQUENCY_CADENCE = {
 
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 
+/**
+ * @param {unknown} value
+ * @returns {number|null} epoch ms or null if invalid
+ */
 export function parseTimestampMs(value) {
   if (value == null || value === "") return null;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) return null;
+    // treat small numbers as seconds
     return value < 1e12 ? value * 1000 : value;
   }
   if (typeof value === "string") {
@@ -43,6 +50,24 @@ export function parseTimestampMs(value) {
   return null;
 }
 
+/**
+ * @param {object} opts
+ * @param {unknown} opts.sourceGeneratedAt
+ * @param {number} [opts.nowMs]
+ * @param {{ freshMs: number, staleMs: number, name?: string }} [opts.cadence]
+ * @returns {{
+ *   status: 'fresh'|'stale'|'expired'|'unknown',
+ *   ageMs: number|null,
+ *   ageMinutes: number|null,
+ *   ageHours: number|null,
+ *   ageSeconds: number|null,
+ *   sourceGeneratedAt: string|null,
+ *   evaluatedAt: string,
+ *   cadence: string,
+ *   actionable: boolean,
+ *   reason?: string
+ * }}
+ */
 export function computeFreshness({
   sourceGeneratedAt,
   nowMs = Date.now(),
@@ -100,6 +125,12 @@ export function computeFreshness({
   };
 }
 
+/**
+ * Apply freshness to a snapshot payload (mutates a shallow copy).
+ * Caps row confidence when not fresh.
+ * @param {object|null} data
+ * @param {object} [opts]
+ */
 export function applyFreshnessToSnapshot(data, opts = {}) {
   if (!data || typeof data !== "object") return data;
   const nowMs = opts.nowMs ?? Date.now();
@@ -139,6 +170,7 @@ export function applyFreshnessToSnapshot(data, opts = {}) {
       if (freshness.status === "unknown" || freshness.status === "expired") {
         return { ...row, confidence: "Low", confidenceCapped: true };
       }
+      // stale → cap High/Medium down to Low for actionable framing
       if (confidence === "high" || confidence === "medium") {
         return { ...row, confidence: "Low", confidenceCapped: true };
       }
@@ -149,6 +181,10 @@ export function applyFreshnessToSnapshot(data, opts = {}) {
   return next;
 }
 
+/**
+ * Sanitize error messages for client/observability (no secrets).
+ * @param {unknown} err
+ */
 export function sanitizeError(err) {
   if (!err) return "unknown_error";
   const msg = String(err.message || err).slice(0, 240);
