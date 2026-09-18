@@ -80,10 +80,20 @@ function timeframeToCgDays(tf, limit) {
   return Math.min(365, (limit || 100) + 5);
 }
 
+/** Once Binance returns geo/auth blocks (common on Vercel egress), skip it for the rest of the process. */
+let binanceBlockedReason = null;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Fetch Binance USDT klines for a symbol like BTC → BTCUSDT
  */
 export async function fetchBinanceKlines(symbol, timeframe = "1h", limit = 100) {
+  if (binanceBlockedReason) {
+    throw new Error(binanceBlockedReason);
+  }
   const interval = timeframeToBinance(timeframe);
   if (!interval) throw new Error(`unsupported_timeframe_${timeframe}`);
   const pair = `${String(symbol).toUpperCase().replace(/USDT$/, "")}USDT`;
@@ -96,6 +106,10 @@ export async function fetchBinanceKlines(symbol, timeframe = "1h", limit = 100) 
       const err = new Error("provider_rate_limited");
       err.code = 429;
       throw err;
+    }
+    if (res.status === 451 || res.status === 403) {
+      binanceBlockedReason = `binance_http_${res.status}`;
+      throw new Error(binanceBlockedReason);
     }
     if (!res.ok) throw new Error(`binance_http_${res.status}`);
     const raw = await res.json();
