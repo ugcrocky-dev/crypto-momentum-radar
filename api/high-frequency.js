@@ -172,7 +172,6 @@ export default async function handler(req, res) {
     res.statusCode = 200;
     res.end(JSON.stringify(payload));
   } catch (err) {
-    // Do not clear cache on failure — serve last good HF payload if present
     if (cache.payload) {
       const freshness = computeFreshness({
         sourceGeneratedAt: cache.payload.data.generatedAt,
