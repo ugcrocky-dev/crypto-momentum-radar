@@ -1,3 +1,5 @@
 # Crypto Momentum Radar
 
-Recovery deployment for truthful data freshness.
+Transparent crypto momentum rankings with truthful freshness.
+
+See docs/FRESHNESS.md for cadence thresholds and observability.
