@@ -49,5 +49,24 @@ async function fetchFiles(){
 if(!(await inflateFromParts())) await fetchFiles();
 try{const {readdir}=await import("node:fs/promises"); const libDir=o.join(root,"lib"), apiLib=o.join(root,"api/lib"); await m(apiLib,{recursive:true}); for(const f of await readdir(libDir)) if(f.endsWith(".js")) await w(o.join(apiLib,f), await rf(o.join(libDir,f))); console.log("mirrored lib -> api/lib");}catch(e){console.log("mirror skip",e.message)}
 for(const s of ["public/index.html","public/freshness-guard.js"]) await r(o.join(root,s));
-for(const[s,i]of [["public/assets/index-BwT13g1_.js","console.log('cmr-ui');\n"],["public/assets/index-_oK46CY_.css","/* cmr */\n"],["public/momentum-snapshot.json",'{"rows":[],"sourceGeneratedAt":null}\n']]){const t=o.join(root,s);try{await r(t)}catch{await m(o.dirname(t),{recursive:!0});await w(t,i)}}
+// Never stub hashed Vite vendor chunks — missing files must fail the build.
+const requiredAssets=[
+  ["public/assets/react-vendor-QOjbT0ub.js",100000],
+  ["public/assets/index-BwT13g1_.js",50000],
+  ["public/assets/index-_oK46CY_.css",10000],
+  ["public/assets/query-vendor-1kHs7ko1.js",100],
+  ["public/assets/chart-vendor-HeAikpr_.js",100],
+  ["public/assets/icon-vendor-BdLtr7HF.js",100],
+];
+for(const[rel,min]of requiredAssets){
+  const t=o.join(root,rel);
+  await r(t);
+  const body=await rf(t);
+  if(body.length<min) throw new Error(`asset_too_small_${rel}_${body.length}`);
+  console.log("asset_ok",rel,body.length);
+}
+try{await r(o.join(root,"public/momentum-snapshot.json"))}catch{
+  await m(o.join(root,"public"),{recursive:!0});
+  await w(o.join(root,"public/momentum-snapshot.json"),'{"rows":[],"sourceGeneratedAt":null}\n');
+}
 console.log("static UI artifacts OK");
