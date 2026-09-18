@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       })
     );
   } catch (err) {
-    res.statusCode = 503;
+    res.statusCode = err.code === 429 ? 503 : 503;
     res.end(JSON.stringify({ error: "ohlcv_unavailable", detail: sanitizeError(err) }));
   }
 }
