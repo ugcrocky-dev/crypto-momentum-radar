@@ -1,14 +1,1 @@
-{
-  "name": "crypto-momentum-radar",
-  "private": true,
-  "version": "0.2.0",
-  "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
-  "scripts": {
-    "build": "node scripts/prepare_static.js",
-    "test": "node --test tests/*.test.js",
-    "start": "npx serve public -p 3000"
-  }
-}
+PLACEHOLDER
