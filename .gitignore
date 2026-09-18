@@ -1,1 +1,8 @@
-PLACEHOLDER
+node_modules/
+.DS_Store
+.env
+.env.*
+!.env.example
+.vercel
+dist/
+.deploy-args.json
