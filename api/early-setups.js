@@ -108,13 +108,18 @@ export default async function handler(req, res) {
   rows = rows.slice(0, limit);
 
   const setups = [];
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const enriched = enrichRowBtcRelative(row, regime);
     const shortExcess = enriched.btcRelative?.d7?.excessReturnPp ?? null;
 
     let setup;
     if (withCandles && row.symbol) {
       try {
+        // Space CoinGecko calls — free tier rate-limits burst fetches on Vercel.
+        if (i > 0) {
+          await new Promise((r) => setTimeout(r, 350));
+        }
         const coinId =
           row.id ||
           (await resolveCoinGeckoId(row.symbol, null)) ||
@@ -230,7 +235,7 @@ export default async function handler(req, res) {
         setups,
         methodology: {
           states: ["Coiling", "Igniting", "Confirmed", "Failed", "Expired"],
-          note: "Compression is direction-neutral. Setup readiness \u2260 directional confidence. Hypothesis weights \u2014 not proven optimal. Not trade advice. Social never overrides invalid technical conditions. When Binance is geo-blocked, CoinGecko approximate OHLC may be used.",
+          note: "Compression is direction-neutral. Setup readiness ≠ directional confidence. Hypothesis weights — not proven optimal. Not trade advice. Social never overrides invalid technical conditions. When Binance is geo-blocked, CoinGecko approximate OHLC may be used.",
         },
       },
     })
