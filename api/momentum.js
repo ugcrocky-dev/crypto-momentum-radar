@@ -7,6 +7,8 @@ import {
   sanitizeError,
 } from "../lib/freshness.js";
 import { enrichSnapshotBtcRelative } from "../lib/btcRelative.js";
+import { enrichRegimeBtcReturns } from "../lib/btcReturns.js";
+import { assessRotationHypothesis } from "../lib/derivatives.js";
 import { prioritizeRows, DEFAULT_WATCHLIST } from "../lib/watchlist.js";
 import {
   readRefreshStatus,
@@ -239,12 +241,24 @@ export default async function handler(req, res) {
     return;
   }
 
-  const data = enrichSnapshotBtcRelative(
-    applyFreshnessToSnapshot(envelope.data, {
-      nowMs,
-      cadence: MAIN_CADENCE,
-    })
-  );
+  const freshData = applyFreshnessToSnapshot(envelope.data, {
+    nowMs,
+    cadence: MAIN_CADENCE,
+  });
+
+  // Enrich BTC 7/30/90 regime returns from live daily candles (no extrapolation)
+  let btcReturnsMeta = null;
+  try {
+    const enriched = await enrichRegimeBtcReturns(freshData.regime || {});
+    freshData.regime = enriched.regime;
+    btcReturnsMeta = enriched.btcReturnsMeta;
+  } catch {
+    btcReturnsMeta = { error: "btc_returns_enrich_failed" };
+  }
+
+  let data = enrichSnapshotBtcRelative(freshData);
+  data.rotation = assessRotationHypothesis(data.regime || {}, data.rows || []);
+  if (btcReturnsMeta) data.btcReturnsMeta = btcReturnsMeta;
 
   // Optional watchlist prioritization via ?watchlist=XRP,SOL or default holdings
   const reqUrl = new URL(req.url || "/", "http://localhost");
@@ -258,6 +272,33 @@ export default async function handler(req, res) {
     data.rows = prioritizeRows(data.rows, watchlist);
     data.watchlist = watchlist;
   }
+
+  // Research filters (do not invent 90d)
+  const filter = reqUrl.searchParams.get("filter");
+  if (filter && Array.isArray(data.rows)) {
+    data.rows = data.rows.filter((row) => {
+      const br = row.btcRelative || {};
+      if (filter === "beating-btc-7d") return br.d7?.beatingBtc === true;
+      if (filter === "beating-btc-30d") return br.d30?.beatingBtc === true;
+      if (filter === "beating-btc-all-available") {
+        return br.beatingBtcAllAvailableWindows === true;
+      }
+      if (filter === "beating-btc-all-three") {
+        return br.beatingBtcAllThreePeriods === true;
+      }
+      if (filter === "improving-btc") return br.improvingVsBtc === true;
+      return true;
+    });
+    data.filter = filter;
+  }
+
+  // Audit misleading proxies explicitly on payload
+  data.metricAudit = {
+    volumeChange24h:
+      "Reported volume change — not trade counts, order flow, or buying pressure.",
+    fundingRate: "Shown only when provider supplies it; missing → unknown.",
+    openInterestUsd: "Rising OI does not establish buying direction.",
+  };
 
   const validation =
     envelope.validation ||
