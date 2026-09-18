@@ -230,7 +230,7 @@
     el.querySelector("#cmr-watch-save").addEventListener("click", function () {
       const input = el.querySelector("#cmr-watch-input");
       const cur = loadWatch();
-      const add = Strinh(input.value || "").toUpperCase().trim();
+      const add = String(input.value || "").toUpperCase().trim();
       if (add && cur.indexOf(add) < 0) cur.push(add);
       saveWatch(cur);
       input.value = "";
