@@ -108,17 +108,18 @@ export default async function handler(req, res) {
   rows = rows.slice(0, limit);
 
   const setups = [];
+  let candleFetchesDisabled = false;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const enriched = enrichRowBtcRelative(row, regime);
     const shortExcess = enriched.btcRelative?.d7?.excessReturnPp ?? null;
 
     let setup;
-    if (withCandles && row.symbol) {
+    if (withCandles && row.symbol && !candleFetchesDisabled) {
       try {
         // Space CoinGecko calls — free tier rate-limits burst fetches on Vercel.
         if (i > 0) {
-          await new Promise((r) => setTimeout(r, 350));
+          await new Promise((r) => setTimeout(r, 500));
         }
         const coinId =
           row.id ||
@@ -151,9 +152,16 @@ export default async function handler(req, res) {
             : null,
         };
       } catch (err) {
+        const detail = sanitizeError(err);
         setup = buildEarlySetupFromMomentumRow(row, { regime, nowMs, freshness });
-        setup.ohlcvError = sanitizeError(err);
+        setup.ohlcvError = detail;
+        if (String(detail).includes("provider_rate_limited")) {
+          candleFetchesDisabled = true;
+        }
       }
+    } else if (withCandles && row.symbol && candleFetchesDisabled) {
+      setup = buildEarlySetupFromMomentumRow(row, { regime, nowMs, freshness });
+      setup.ohlcvError = "ohlcv_skipped:provider_rate_limited";
     } else {
       setup = buildEarlySetupFromMomentumRow(row, { regime, nowMs, freshness });
     }
