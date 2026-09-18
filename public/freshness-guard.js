@@ -261,7 +261,7 @@
     box.innerHTML = "<div class='muted'>Loading…</div>";
     try {
       const res = await origFetch(
-        "/api/early-setups?limit=10&candles=1&timeframe=1h&prioritizeHoldings=1&symbols=" +
+        "/api/early-setups?limit=5&candles=1&timeframe=1h&prioritizeHoldings=1&symbols=" +
           watchlistQuery()
       );
       const json = await res.json();
@@ -333,7 +333,7 @@
     box.innerHTML = "<div class='muted'>Loading setups then traction…</div>";
     try {
       const res = await origFetch(
-        "/api/early-setups?limit=8&candles=1&timeframe=1h&prioritizeHoldings=1&symbols=" +
+        "/api/early-setups?limit=5&candles=1&timeframe=1h&prioritizeHoldings=1&symbols=" +
           watchlistQuery()
       );
       const json = await res.json();
