@@ -9,7 +9,7 @@
   const WATCH_KEY = "cmr:my-holdings:v1";
   const DEFAULT_WATCH = ["XRP", "AERO", "UNI", "DOGE", "HBAR", "ARB", "SOL", "ETH"];
   const TAB_KEY = "cmr:research-tab:v1";
-  const OPEN_KEY = "cmr:research-open:v1";
+  const OPEN_KEY = "cmr:research-open:v2";
 
   let lastMain = null;
   let lastHf = null;
@@ -426,10 +426,8 @@
     renderWatch();
     renderBanner();
     syncTabs();
-    // Default closed so the homepage stays usable; only restore open if user left it open.
-    let preferOpen = false;
-    try { preferOpen = localStorage.getItem(OPEN_KEY) === "1"; } catch (_) {}
-    setResearchOpen(preferOpen);
+    // Always start collapsed so the homepage stays usable. User can reopen via the Research button.
+    setResearchOpen(false);
     setInterval(function () {
       if (lastMain) patchMomentumPayload(lastMain);
       if (lastHf) patchHfPayload(lastHf);
