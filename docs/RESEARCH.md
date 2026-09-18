@@ -77,3 +77,14 @@ Default holdings: XRP, AERO, UNI, DOGE, HBAR, ARB, SOL, ETH (editable in researc
 ## Validation status
 
 Comparative A/B/C validation is **pending forward paper tracking**. Do not claim predictive edge.
+
+
+## Forward validation
+
+Comparative A/B/C evaluation is **pending forward paper tracking**.
+
+```bash
+node scripts/validation_forward.js
+```
+
+Protocol lives in `data/validation-forward.json`. Do not backtest social using later engagement totals. No predictive edge is claimed.

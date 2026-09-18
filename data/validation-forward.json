@@ -1,0 +1,33 @@
+{
+  "protocol": {
+    "status": "pending_forward_paper_tracking",
+    "asOf": "2026-09-18T15:40:47.289Z",
+    "cohorts": {
+      "A": "Existing momentum scanner (/api/momentum rankings)",
+      "B": "Early technical scanner (/api/early-setups)",
+      "C": "Early scanner + social/catalyst (/api/early-setups?social=1)"
+    },
+    "metrics": [
+      "lead_time_vs_momentum_alerts",
+      "false_breakout_rate",
+      "max_favorable_excursion",
+      "max_adverse_excursion",
+      "net_paper_return_after_fees_slippage",
+      "alerts_per_day",
+      "regime_segment_performance"
+    ],
+    "biasControls": [
+      "chronological_only",
+      "no_survivorship_fill_from_later_listings",
+      "social_evidence_frozen_at_detection_time",
+      "no_lookahead_on_engagement_totals"
+    ],
+    "fees": {
+      "feeBps": 10,
+      "slippageBps": 5
+    },
+    "note": "Do not claim predictive edge until held-out forward sample is collected."
+  },
+  "observations": [],
+  "lastUpdatedAt": "2026-09-18T15:40:47.290Z"
+}
