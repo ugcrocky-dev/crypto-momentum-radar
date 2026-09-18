@@ -7,6 +7,18 @@ import {
 const CACHE_TTL_MS = 10_000;
 let cache = { at: 0, payload: null };
 
+function classifySide(change1h) {
+  if (change1h >= 1.5) return "Upside Acceleration";
+  if (change1h <= -1.5) return "Downside Flush";
+  return "Chop / Watch";
+}
+
+function liquidityTier(volume) {
+  if (volume >= 50_000_000) return "deep";
+  if (volume >= 5_000_000) return "liquid";
+  return "thin";
+}
+
 function rankRows(markets) {
   const rows = (markets || [])
     .filter((m) => m && m.symbol && m.current_price != null)
@@ -22,20 +34,28 @@ function rankRows(markets) {
       const pulse = Math.abs(change1h) * 0.7 + Math.abs(change24h) * 0.3;
       const volScore = Math.log10(Math.max(volume, 1));
       const score = pulse * 2 + volScore;
+      const symbol = String(m.symbol).toUpperCase();
       return {
         id: m.id,
-        symbol: String(m.symbol).toUpperCase(),
+        symbol,
         name: m.name,
         price: m.current_price,
         change1h,
         change24h,
         volume,
+        quoteVolume: volume,
         marketCap: mcap,
         score: Math.round(score * 1000) / 1000,
         image: m.image || null,
+        // UI (index bundle) requires side for Tape column className.
+        side: classifySide(change1h),
+        liquidityTier: liquidityTier(volume),
+        market: m.id || symbol,
+        alert: null,
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score)
+    .map((row, idx) => ({ ...row, rank: idx + 1 }));
 
   const upside = rows.filter((r) => r.change1h > 0).length;
   const downside = rows.filter((r) => r.change1h < 0).length;
