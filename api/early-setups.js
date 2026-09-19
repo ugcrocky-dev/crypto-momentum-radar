@@ -13,6 +13,7 @@ import {
 } from "../lib/earlySetups.js";
 import { fetchCandles, lookupCoinGeckoId, resolveCoinGeckoId } from "../lib/ohlcv.js";
 import { enrichRowsWithRisk } from "../lib/tokenRisk.js";
+import { HARD_GATE_PUBLIC } from "../lib/hardGates.js";
 import { buildTractionCard } from "../lib/social.js";
 import { DEFAULT_WATCHLIST, normalizeWatchlist, prioritizeRows } from "../lib/watchlist.js";
 
@@ -133,6 +134,7 @@ export default async function handler(req, res) {
         change24h: r.market?.change24h ?? null,
         change7d: r.market?.change7d ?? null,
         volumeChange24h: r.market?.volumeChange24h ?? null,
+        hardGate: r.risk?.hardGate?.status || "not_cleared",
       }))
     : undefined;
   const page = rows.slice(offset, offset + limit);
@@ -219,6 +221,7 @@ export default async function handler(req, res) {
     if (ao !== bo) return ao - bo;
     return (b.setupReadiness || 0) - (a.setupReadiness || 0);
   });
+
   const published = earlyOnly
     ? setups.filter((s) => s.state === "Coiling" || s.state === "Igniting")
     : setups;
@@ -254,6 +257,14 @@ export default async function handler(req, res) {
         setup.traction = { error: sanitizeError(err), traction: "insufficient evidence" };
         setup.entryReview = "technical_ok_social_unknown";
       }
+    }
+  }
+
+  for (const setup of setups) {
+    const gate = setup.snapshot?.risk?.hardGate;
+    setup.copyAllowed = false;
+    if (!gate || gate.pass !== true) {
+      setup.entryReview = "blocked_hard_gate";
     }
   }
 
@@ -294,7 +305,8 @@ export default async function handler(req, res) {
         ...(universe ? { universe } : {}),
         methodology: {
           states: ["Coiling", "Igniting", "Confirmed", "Failed", "Expired"],
-          note: "Compression is direction-neutral. Setup readiness ≠ directional confidence. Hypothesis weights — not proven optimal. Not trade advice. Social never overrides invalid technical conditions. When Binance is geo-blocked, CoinGecko approximate OHLC may be used.",
+          note: "Compression is direction-neutral. Setup readiness ≠ directional confidence. Hypothesis weights — not proven optimal. Not trade advice. Social never overrides invalid technical conditions. When Binance is geo-blocked, CoinGecko approximate OHLC may be used. Hard gates block copying only and do not hide coins.",
+          hardGates: HARD_GATE_PUBLIC,
         },
       },
     })
