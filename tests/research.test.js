@@ -19,6 +19,7 @@ import {
 import { mergeAlerts, simulatePaperEntry, resolveStopTargetHit } from "../api/lib/alerts.js";
 import { normalizeWatchlist, prioritizeRows, DEFAULT_WATCHLIST } from "../api/lib/watchlist.js";
 import { assessGoPlusSecurity } from "../lib/tokenRisk.js";
+import { evaluateHardGates } from "../lib/hardGates.js";
 
 test("BTC excess and coin/BTC formulas", () => {
   // coin +20%, BTC +10% → excess 10pp; coin/BTC = 100*((1.2/1.1)-1) ≈ 9.091
@@ -155,6 +156,100 @@ test("GoPlus risk labels mintable and unlocked LP without hiding", () => {
   assert.equal(assessed.risky, true);
   assert.ok(assessed.reasons.includes("mintable"));
   assert.ok(assessed.reasons.includes("unlocked_liquidity"));
+});
+
+function clearedToken(overrides = {}) {
+  return {
+    is_honeypot: "0",
+    is_mintable: "0",
+    transfer_pausable: "0",
+    hidden_owner: "0",
+    owner_change_balance: "0",
+    can_take_back_ownership: "0",
+    selfdestruct: "0",
+    is_blacklisted: "0",
+    slippage_modifiable: "0",
+    personal_slippage_modifiable: "0",
+    cannot_buy: "0",
+    honeypot_with_same_creator: "0",
+    is_open_source: "1",
+    buy_tax: "0",
+    sell_tax: "0",
+    owner_percent: "0",
+    creator_percent: "0",
+    owner_address: "0xabc",
+    holders: [
+      { address: "0x1111111111111111111111111111111111111111", percent: "0.04", is_locked: 0, tag: "" },
+      { address: "0x2222222222222222222222222222222222222222", percent: "0.04", is_locked: 0, tag: "" },
+      { address: "0x3333333333333333333333333333333333333333", percent: "0.03", is_locked: 0, tag: "" },
+    ],
+    lp_holders: [
+      { address: "0x4444444444444444444444444444444444444444", percent: "1", is_locked: 1, tag: "lock" },
+    ],
+    dex: [{ liquidity: "250000" }],
+    ...overrides,
+  };
+}
+
+test("hard gate blocks mintable, unlocked LP, and concentrated holder without hiding the row", () => {
+  const gate = evaluateHardGates({
+    symbol: "PIEVERSE",
+    status: "risky",
+    scanned: true,
+    item: clearedToken({
+      is_mintable: "1",
+      hidden_owner: "1",
+      lp_holders: [{ address: "0x1", percent: "1", is_locked: 0, tag: "" }],
+      holders: [
+        { address: "0x9999999999999999999999999999999999999999", percent: "0.228", is_locked: 0, tag: "" },
+        { address: "0x8888888888888888888888888888888888888888", percent: "0.04", is_locked: 0, tag: "" },
+      ],
+    }),
+  });
+  assert.equal(gate.pass, false);
+  assert.equal(gate.status, "blocked");
+  assert.equal(gate.copyAllowed, false);
+  assert.ok(gate.blocked.includes("mintable"));
+  assert.ok(gate.blocked.includes("hidden_owner"));
+  assert.ok(gate.blocked.includes("unlocked_liquidity"));
+  assert.ok(gate.blocked.some((r) => r.startsWith("top_holder_")));
+});
+
+test("hard gate passes a dispersed locked-LP token and still refuses live copy", () => {
+  const gate = evaluateHardGates({
+    symbol: "CLEAR",
+    status: "clear",
+    scanned: true,
+    item: clearedToken(),
+  });
+  assert.equal(gate.pass, true);
+  assert.equal(gate.status, "clear");
+  assert.equal(gate.copyAllowed, false);
+});
+
+test("hard gate fails closed when holder or scan evidence is missing", () => {
+  const missingHolders = evaluateHardGates({
+    symbol: "PARTIAL",
+    status: "clear",
+    scanned: true,
+    item: clearedToken({ holders: [] }),
+  });
+  assert.equal(missingHolders.pass, false);
+  assert.equal(missingHolders.status, "not_cleared");
+  assert.ok(missingHolders.missing.includes("holder_concentration"));
+
+  const unscanned = evaluateHardGates({ symbol: "NEW", status: "unresolved", scanned: false });
+  assert.equal(unscanned.pass, false);
+  assert.ok(unscanned.missing.includes("unresolved_token"));
+});
+
+test("native L1 is exempt from ERC20 gates; a listed ERC20 major is not", () => {
+  const btc = evaluateHardGates({ symbol: "BTC", status: "native_safe", scanned: false });
+  assert.equal(btc.pass, true);
+  assert.equal(btc.status, "exempt");
+  const uni = evaluateHardGates({ symbol: "UNI", status: "native_safe", scanned: false });
+  assert.equal(uni.pass, false);
+  assert.equal(uni.status, "not_cleared");
 });
 
 test("paper entry applies fees and slippage", () => {
