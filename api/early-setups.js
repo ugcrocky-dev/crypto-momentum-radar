@@ -12,6 +12,7 @@ import {
   selectPreBreakoutRows,
 } from "../lib/earlySetups.js";
 import { fetchCandles, lookupCoinGeckoId, resolveCoinGeckoId } from "../lib/ohlcv.js";
+import { enrichRowsWithRisk } from "../lib/tokenRisk.js";
 import { buildTractionCard } from "../lib/social.js";
 import { DEFAULT_WATCHLIST, normalizeWatchlist, prioritizeRows } from "../lib/watchlist.js";
 
@@ -101,6 +102,12 @@ export default async function handler(req, res) {
   }
   if (earlyOnly && !watchOnly) {
     rows = selectPreBreakoutRows(rows);
+  }
+  try {
+    const enrichedRisk = await enrichRowsWithRisk(rows, { maxChecks: 16 });
+    rows = enrichedRisk.rows;
+  } catch {
+    /* keep rows unlabeled if risk provider fails */
   }
   // Holdings mode only: prefer symbols that already have a CoinGecko id.
   if (withCandles && prioritizeHoldings && !excludeHoldings) {
@@ -198,6 +205,7 @@ export default async function handler(req, res) {
       change24h: row.market?.change24h ?? null,
       change7d: row.market?.change7d ?? null,
       volumeChange24h: row.market?.volumeChange24h ?? null,
+      risk: row.risk || null,
     };
     setups.push(setup);
   }
