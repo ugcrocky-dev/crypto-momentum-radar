@@ -16,6 +16,8 @@
   let activeTab = "setups";
   let researchOpen = false;
   let panelsLoaded = false;
+  let researchRefreshTimer = null;
+  const RESEARCH_REFRESH_MS = 2 * 60 * 1000;
 
   function parseTs(v) {
     if (v == null || v === "") return null;
@@ -161,7 +163,27 @@
     if (researchOpen) {
       syncTabs();
       loadActivePanel(true);
+      startResearchRefresh();
+    } else {
+      stopResearchRefresh();
     }
+  }
+
+  function stopResearchRefresh() {
+    if (researchRefreshTimer) {
+      clearInterval(researchRefreshTimer);
+      researchRefreshTimer = null;
+    }
+  }
+
+  function startResearchRefresh() {
+    stopResearchRefresh();
+    researchRefreshTimer = setInterval(function () {
+      if (!researchOpen) return;
+      if (document.hidden) return;
+      panelsLoaded = false;
+      loadActivePanel(true);
+    }, RESEARCH_REFRESH_MS);
   }
 
   function loadActivePanel(force) {
@@ -467,6 +489,11 @@
       if (lastHf) patchHfPayload(lastHf);
       renderBanner();
     }, 15000);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden || !researchOpen) return;
+      panelsLoaded = false;
+      loadActivePanel(true);
+    });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
