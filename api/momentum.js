@@ -11,6 +11,7 @@ import { enrichRegimeBtcReturns } from "../lib/btcReturns.js";
 import { assessRotationHypothesis } from "../lib/derivatives.js";
 import { prioritizeRows, DEFAULT_WATCHLIST } from "../lib/watchlist.js";
 import { enrichRowsWithRisk } from "../lib/tokenRisk.js";
+import { HARD_GATE_PUBLIC } from "../lib/hardGates.js";
 import {
   readRefreshStatus,
   readSnapshotEnvelope,
@@ -272,9 +273,10 @@ export default async function handler(req, res) {
       data.riskFilter = {
         mode: "label",
         provider: "goplus",
-        note: "Risky coins stay visible with a Risky coin warning. Not investment advice.",
+        note: "Risky coins stay visible. Hard gates block copying only — they do not remove rows.",
         ...enrichedRisk.riskMeta,
       };
+      data.hardGates = HARD_GATE_PUBLIC;
     } catch (err) {
       data.riskFilter = { mode: "label", error: sanitizeError(err) };
     }
