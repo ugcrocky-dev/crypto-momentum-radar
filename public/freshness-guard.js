@@ -8,12 +8,12 @@
   const FUTURE_SKEW = 5 * 60 * 1000;
   const WATCH_KEY = "cmr:my-holdings:v1";
   const DEFAULT_WATCH = ["XRP", "AERO", "UNI", "DOGE", "HBAR", "ARB", "SOL", "ETH"];
-  const TAB_KEY = "cmr:research-tab:v1";
+  const TAB_KEY = "cmr:research-tab:v2";
   const OPEN_KEY = "cmr:research-open:v2";
 
   let lastMain = null;
   let lastHf = null;
-  let activeTab = "setups";
+  let activeTab = "whales";
   let researchOpen = false;
   let panelsLoaded = false;
   let researchRefreshTimer = null;
@@ -190,7 +190,8 @@
     if (!researchOpen) return;
     if (!force && panelsLoaded) return;
     panelsLoaded = true;
-    if (activeTab === "setups") loadSetups();
+    if (activeTab === "whales") loadWhales();
+    else if (activeTab === "setups") loadSetups();
     else if (activeTab === "btc") loadBtc();
     else if (activeTab === "traction") loadTraction();
     else if (activeTab === "holdings") renderWatch();
@@ -204,7 +205,7 @@
     ensureStyles();
     let el = document.getElementById("cmr-research");
     if (el) return el;
-    try { activeTab = localStorage.getItem(TAB_KEY) || "setups"; } catch (_) {}
+    try { activeTab = localStorage.getItem(TAB_KEY) || "whales"; } catch (_) {}
     el = document.createElement("aside");
     el.id = "cmr-research";
     el.dataset.open = "false";
@@ -214,11 +215,13 @@
       "<div class='cmr-head'><h3>Research</h3>",
       "<button type='button' class='cmr-close' id='cmr-research-close' aria-label='Close research'>Close</button></div>",
       "<div class='tabs' role='tablist'>",
+      "<button type='button' data-tab='whales'>Whales</button>",
       "<button type='button' data-tab='setups'>Early Setups</button>",
       "<button type='button' data-tab='btc'>BTC-relative</button>",
       "<button type='button' data-tab='traction'>Traction</button>",
       "<button type='button' data-tab='holdings'>Holdings</button>",
       "</div>",
+      "<div id='cmr-panel-whales' class='panel'><div class='muted'>Large DEX buys. No wallet profit track record. Copying is off. Hard gates do not hide a buy.</div><div id='cmr-whales'></div></div>",
       "<div id='cmr-panel-setups' class='panel'><div class='muted'>Pre-breakout only — not the momentum leaderboard. Confirmed and Overextended coins are excluded. Compression ≠ bullish.</div><div id='cmr-setups'></div></div>",
       "<div id='cmr-panel-btc' class='panel'><div class='muted'>Filters use excess pp & coin/BTC % — 90d never extrapolated</div>",
       "<select id='cmr-btc-filter'><option value=''>Ranked universe</option>",
@@ -287,6 +290,20 @@
     return "<div class='warn'>" + label + (why ? " — " + why : "") + "</div>";
   }
 
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fmtUsd(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "—";
+    if (n >= 1e6) return "$" + (Math.round(n / 1e5) / 10) + "M";
+    if (n >= 1e3) return "$" + Math.round(n / 1e3) + "k";
+    return "$" + Math.round(n);
+  }
+
   function fmtPct(v) {
     const n = Number(v);
     if (!Number.isFinite(n)) return "—";
@@ -319,6 +336,51 @@
       (s.trigger ? "<div class='muted'>trigger: " + s.trigger + "</div>" : "") +
       "</span></div>"
     );
+  }
+
+  function whaleRowHtml(a) {
+    const risk = a.risk || {};
+    const gate = risk.hardGate || {};
+    const gateTag = gate.pass ? "" : " <span class='warn'>Hard gate</span>";
+    const risky = risk.risky ? " <span class='warn'>Risky coin</span>" : "";
+    const sizeNote = a.usdReliable ? "" : " · USD print exceeds pool reserves";
+    const repeat = a.repeatInWindow
+      ? "<div class='muted'>" + (a.repeatCount || 2) + " buys from this wallet in the scan. Not a profit track record.</div>"
+      : "";
+    return (
+      "<div class='cmr-row'><span><strong>" + esc(a.symbol || a.walletShort || "?") + "</strong> " +
+      esc(a.chainLabel || a.chain || "") + risky + gateTag +
+      "<div class='muted'>" + esc(a.walletShort || "") + " bought " + fmtUsd(a.usd) + sizeNote +
+      (a.pool ? " · " + esc(a.pool) : "") +
+      (a.at ? " · " + esc(String(a.at).replace("T", " ").replace("Z", "Z")) : "") +
+      "</div>" +
+      (risk.label ? "<div class='warn'>" + esc(risk.label) + "</div>" : "") +
+      hardGateHtml(risk) +
+      repeat +
+      (a.txUrl ? "<div class='muted'><a href='" + esc(a.txUrl) + "' target='_blank' rel='noopener'>tx</a> · copying off</div>" : "") +
+      "</span></div>"
+    );
+  }
+
+  async function loadWhales() {
+    const box = ensureResearch().querySelector("#cmr-whales");
+    box.innerHTML = "<div class='muted'>Loading large buys…</div>";
+    try {
+      const res = await origFetch("/api/whale-alerts");
+      const json = await res.json();
+      const alerts = (json.data && json.data.alerts) || [];
+      const meta = json.metadata || {};
+      let html = "<div class='muted'>Buys ≥ " + fmtUsd(meta.minBuyUsd) +
+        " on " + esc((meta.networks || []).join(", ")) +
+        ". Copying off. No wallet PnL.</div>";
+      if (!alerts.length) {
+        html += "<div class='muted'>No large buys in the scanned pools right now.</div>";
+      }
+      html += alerts.map(whaleRowHtml).join("");
+      box.innerHTML = html;
+    } catch (_) {
+      box.innerHTML = "<div class='warn'>Whale alerts unavailable</div>";
+    }
   }
 
   async function loadSetups() {
