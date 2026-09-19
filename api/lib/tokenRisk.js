@@ -18,7 +18,7 @@ import {
 import { sanitizeError } from "./freshness.js";
 import { evaluateHardGates, hardGateWarning } from "./hardGates.js";
 
-const CACHE_PREFIX = "cmr:token-risk:v2:";
+const CACHE_PREFIX = "cmr:token-risk:v3:";
 const CACHE_TTL_SEC = 12 * 60 * 60;
 const MEM_TTL_MS = 30 * 60 * 1000;
 const MAX_CHECKS_PER_PASS = 24;
@@ -285,7 +285,8 @@ export async function assessSymbolRisk(symbol, { coinId = null } = {}) {
         provider: null,
         checkedAt: new Date().toISOString(),
       });
-      await cacheSet(sym, value);
+      // Do not lock a lookup miss for 12h — CoinGecko often 429s mid-scan.
+      memSet(sym, value);
       return value;
     }
     if (contract.native) {
