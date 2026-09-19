@@ -278,6 +278,15 @@
     ensureResearch().querySelector("#cmr-watch-list").textContent = loadWatch().join(" · ") || "(empty)";
   }
 
+  function hardGateHtml(risk) {
+    const g = risk && risk.hardGate;
+    if (!g || g.pass) return "";
+    const reasons = g.status === "blocked" ? g.blocked : g.missing;
+    const why = (reasons || []).join("; ").split("_").join(" ");
+    const label = g.status === "blocked" ? "Hard gate: blocked" : "Hard gate: not cleared";
+    return "<div class='warn'>" + label + (why ? " — " + why : "") + "</div>";
+  }
+
   function fmtPct(v) {
     const n = Number(v);
     if (!Number.isFinite(n)) return "—";
@@ -298,12 +307,14 @@
       "<div class='cmr-row'><span><strong>" + (s.symbol || "?") + "</strong> " +
       (s.state || "n/a") +
       (snap.risk && snap.risk.risky ? " <span class='warn'>Risky coin</span>" : "") +
+      (snap.risk && snap.risk.hardGate && !snap.risk.hardGate.pass ? " <span class='warn'>Hard gate</span>" : "") +
       "<div class='muted'>ready " + (s.setupReadiness != null ? s.setupReadiness : "—") +
       " · " + (s.dataConfidence || "") + " · " + move + brLine + ohlcvNote +
       "</div>" +
       (snap.risk && snap.risk.risky && snap.risk.label
         ? "<div class='warn'>" + snap.risk.label + "</div>"
         : "") +
+      hardGateHtml(snap.risk) +
       evidence.map(function (line) { return "<div class='muted'>" + line + "</div>"; }).join("") +
       (s.trigger ? "<div class='muted'>trigger: " + s.trigger + "</div>" : "") +
       "</span></div>"
@@ -342,6 +353,9 @@
         html += rest.map(function (u) {
           return "<div class='cmr-row'><span><strong>" + (u.symbol || "?") + "</strong> " +
             (u.momentumState || "") +
+            (u.hardGate && u.hardGate !== "clear" && u.hardGate !== "exempt"
+              ? " <span class='warn'>" + (u.hardGate === "blocked" ? "Hard gate: blocked" : "Hard gate: not cleared") + "</span>"
+              : "") +
             "<div class='muted'>24h " + fmtPct(u.change24h) + " · 7d " + fmtPct(u.change7d) +
             " · vol " + fmtPct(u.volumeChange24h) + "</div></span></div>";
         }).join("");
@@ -375,10 +389,12 @@
           "<div class='cmr-row'><span><strong>" + r.symbol + "</strong>" +
           (watch.has(String(r.symbol).toUpperCase()) ? " ★" : "") +
           (r.risk && r.risk.risky ? " <span class='warn'>Risky coin</span>" : "") +
+          (r.risk && r.risk.hardGate && !r.risk.hardGate.pass ? " <span class='warn'>Hard gate</span>" : "") +
           "<div class='muted'>7d excess " + d7 + " · 30d " + d30 + " · 90d " + d90 + "</div>" +
           (r.risk && r.risk.risky && r.risk.label
             ? "<div class='warn'>" + r.risk.label + "</div>"
             : "") +
+          hardGateHtml(r.risk) +
           "</span></div>"
         );
       }).join("");
