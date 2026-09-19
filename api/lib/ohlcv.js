@@ -80,10 +80,20 @@ function timeframeToCgDays(tf, limit) {
   return Math.min(365, (limit || 100) + 5);
 }
 
+/** Once Binance returns geo/auth blocks (common on Vercel egress), skip it for the rest of the process. */
+let binanceBlockedReason = null;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Fetch Binance USDT klines for a symbol like BTC → BTCUSDT
  */
 export async function fetchBinanceKlines(symbol, timeframe = "1h", limit = 100) {
+  if (binanceBlockedReason) {
+    throw new Error(binanceBlockedReason);
+  }
   const interval = timeframeToBinance(timeframe);
   if (!interval) throw new Error(`unsupported_timeframe_${timeframe}`);
   const pair = `${String(symbol).toUpperCase().replace(/USDT$/, "")}USDT`;
@@ -96,6 +106,10 @@ export async function fetchBinanceKlines(symbol, timeframe = "1h", limit = 100) 
       const err = new Error("provider_rate_limited");
       err.code = 429;
       throw err;
+    }
+    if (res.status === 451 || res.status === 403) {
+      binanceBlockedReason = `binance_http_${res.status}`;
+      throw new Error(binanceBlockedReason);
     }
     if (!res.ok) throw new Error(`binance_http_${res.status}`);
     const raw = await res.json();
@@ -189,13 +203,106 @@ const SYMBOL_COINGECKO_IDS = {
   AVAX: "avalanche-2",
   DOT: "polkadot",
   LINK: "chainlink",
+  // Default holdings / research watchlist
+  AERO: "aerodrome-finance",
+  UNI: "uniswap",
+  HBAR: "hedera-hashgraph",
+  ARB: "arbitrum",
+  // Frequently ranked momentum alts (Binance often 451 from Vercel)
+  PIEVERSE: "pieverse",
+  ZAMA: "zama",
+  INJ: "injective-protocol",
+  APT: "aptos",
+  OP: "optimism",
+  GEOD: "geodnet",
+  S: "sonic-3",
+  SUI: "sui",
+  NEAR: "near",
+  PEPE: "pepe",
+  SHIB: "shiba-inu",
+  WIF: "dogwifcoin",
+  MATIC: "matic-network",
+  POL: "polygon-ecosystem-token",
+  ATOM: "cosmos",
+  LTC: "litecoin",
+  TRX: "tron",
+  TON: "the-open-network",
+  AAVE: "aave",
+  MKR: "maker",
+  CRV: "curve-dao-token",
+  LDO: "lido-dao",
+  RENDER: "render-token",
+  FET: "fetch-ai",
+  FIL: "filecoin",
+  ICP: "internet-computer",
+  SEI: "sei-network",
+  TIA: "celestia",
+  JUP: "jupiter-exchange-solana",
+  PYTH: "pyth-network",
+  WLD: "worldcoin-wld",
+  ONDO: "ondo-finance",
+  ENA: "ethena",
 };
+
+/** In-memory CoinGecko id lookups from /search (symbol → id|null). */
+const cgIdCache = new Map();
+
+export function lookupCoinGeckoId(symbol, coinId) {
+  if (coinId) return String(coinId);
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return null;
+  if (SYMBOL_COINGECKO_IDS[sym]) return SYMBOL_COINGECKO_IDS[sym];
+  if (cgIdCache.has(sym)) return cgIdCache.get(sym);
+  return null;
+}
+
+/**
+ * Resolve CoinGecko coin id: explicit id → static map → /search exact symbol match.
+ * Caches misses as null so we do not hammer the search API.
+ */
+export async function resolveCoinGeckoId(symbol, coinId) {
+  const known = lookupCoinGeckoId(symbol, coinId);
+  if (known) return known;
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return null;
+  if (cgIdCache.has(sym)) return cgIdCache.get(sym);
+
+  const headers = { Accept: "application/json" };
+  if (process.env.COINGECKO_API_KEY) {
+    headers["x-cg-demo-api-key"] = process.env.COINGECKO_API_KEY;
+  }
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const url = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(sym)}`;
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    if (!res.ok) {
+      cgIdCache.set(sym, null);
+      return null;
+    }
+    const json = await res.json();
+    const coins = Array.isArray(json.coins) ? json.coins : [];
+    const exact = coins.filter(
+      (c) => String(c?.symbol || "").toUpperCase() === sym && c?.id
+    );
+    exact.sort((a, b) => {
+      const ar = Number.isFinite(a.market_cap_rank) ? a.market_cap_rank : 1e9;
+      const br = Number.isFinite(b.market_cap_rank) ? b.market_cap_rank : 1e9;
+      return ar - br;
+    });
+    const id = exact[0]?.id || null;
+    cgIdCache.set(sym, id);
+    return id;
+  } catch {
+    cgIdCache.set(sym, null);
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 export async function fetchCandles({ symbol, coinId, timeframe = "1h", limit = 100 } = {}) {
   const errors = [];
-  const resolvedCoinId =
-    coinId ||
-    (symbol ? SYMBOL_COINGECKO_IDS[String(symbol).trim().toUpperCase()] : null);
   if (symbol) {
     try {
       return await fetchBinanceKlines(symbol, timeframe, limit);
@@ -203,16 +310,19 @@ export async function fetchCandles({ symbol, coinId, timeframe = "1h", limit = 1
       errors.push(sanitizeError(err));
     }
   }
+  const resolvedCoinId = await resolveCoinGeckoId(symbol, coinId);
   if (resolvedCoinId) {
     try {
       return await fetchCoinGeckoApprox(resolvedCoinId, timeframe, limit);
     } catch (err) {
       errors.push(sanitizeError(err));
     }
+  } else if (symbol) {
+    errors.push("coingecko_id_unresolved");
   }
   const err = new Error(`ohlcv_unavailable:${errors.join("|") || "no_provider"}`);
   err.details = errors;
   throw err;
 }
 
-export { PROVIDER as OHLCV_PROVIDERS };
+export { PROVIDER as OHLCV_PROVIDERS, SYMBOL_COINGECKO_IDS };

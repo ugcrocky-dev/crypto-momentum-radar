@@ -13,9 +13,12 @@ import {
   scoreSetupReadiness,
   priorResistance,
   buildEarlySetup,
+  selectPreBreakoutRows,
+  alreadyExtendedSnapshot,
 } from "../api/lib/earlySetups.js";
 import { mergeAlerts, simulatePaperEntry, resolveStopTargetHit } from "../api/lib/alerts.js";
 import { normalizeWatchlist, prioritizeRows, DEFAULT_WATCHLIST } from "../api/lib/watchlist.js";
+import { assessGoPlusSecurity } from "../lib/tokenRisk.js";
 
 test("BTC excess and coin/BTC formulas", () => {
   // coin +20%, BTC +10% → excess 10pp; coin/BTC = 100*((1.2/1.1)-1) ≈ 9.091
@@ -122,6 +125,36 @@ test("alerts do not reset trigger price on refresh", () => {
   ];
   const merged = mergeAlerts(existing, incoming, { nowMs: Date.parse("2026-09-18T12:00:00.000Z") });
   assert.equal(merged[0].triggerPrice, 10);
+});
+
+test("pre-breakout pool drops confirmed and overextended names", () => {
+  const rows = [
+    { symbol: "BOOM", state: "Confirmed momentum", market: { change24h: 30, change7d: 40, volumeChange24h: 10 } },
+    { symbol: "HOT", state: "Overextended", market: { change24h: 5, change7d: 8, volumeChange24h: 10 } },
+    { symbol: "RUN", state: "Building", market: { change24h: 40, change7d: 10, volumeChange24h: 10 } },
+    { symbol: "COIL", state: "Building", market: { change24h: 4, change7d: 8, volumeChange24h: 20 } },
+    { symbol: "QUIET", state: "Watch", market: { change24h: 2, change7d: 3, volumeChange24h: 5 } },
+    { symbol: "DEAD", state: "Weak", market: { change24h: 1, change7d: 1, volumeChange24h: 1 } },
+  ];
+  assert.equal(alreadyExtendedSnapshot(rows[0]), true);
+  const picked = selectPreBreakoutRows(rows).map((r) => r.symbol);
+  assert.deepEqual(picked, ["COIL", "QUIET"]);
+});
+
+test("GoPlus risk labels mintable and unlocked LP without hiding", () => {
+  const assessed = assessGoPlusSecurity({
+    is_mintable: "1",
+    transfer_pausable: "0",
+    is_honeypot: "0",
+    hidden_owner: "0",
+    lp_holders: [
+      { address: "0x1", is_locked: 0, percent: "0.99" },
+      { address: "0x2", is_locked: 0, percent: "0.01" },
+    ],
+  });
+  assert.equal(assessed.risky, true);
+  assert.ok(assessed.reasons.includes("mintable"));
+  assert.ok(assessed.reasons.includes("unlocked_liquidity"));
 });
 
 test("paper entry applies fees and slippage", () => {
