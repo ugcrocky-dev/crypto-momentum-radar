@@ -9,6 +9,7 @@ import {
   buildEarlySetup,
   buildEarlySetupFromMomentumRow,
   attachFreshnessGate,
+  selectPreBreakoutRows,
 } from "../lib/earlySetups.js";
 import { fetchCandles, lookupCoinGeckoId, resolveCoinGeckoId } from "../lib/ohlcv.js";
 import { buildTractionCard } from "../lib/social.js";
@@ -56,6 +57,7 @@ export default async function handler(req, res) {
   // Holdings mode is opt-in. Research scans the ranked universe so new coins can surface.
   const prioritizeHoldings = url.searchParams.get("prioritizeHoldings") === "1";
   const excludeHoldings = url.searchParams.get("excludeHoldings") === "1";
+  const earlyOnly = url.searchParams.get("early") !== "0";
   const wantUniverse = url.searchParams.get("universe") !== "0";
   const symbolsParam = parseSymbolsParam(url.searchParams.get("symbols"));
   const focusList = symbolsParam.length ? symbolsParam : DEFAULT_WATCHLIST;
@@ -97,6 +99,9 @@ export default async function handler(req, res) {
   } else if (prioritizeHoldings) {
     rows = prioritizeRows(rows, focusList);
   }
+  if (earlyOnly && !watchOnly) {
+    rows = selectPreBreakoutRows(rows);
+  }
   // Holdings mode only: prefer symbols that already have a CoinGecko id.
   if (withCandles && prioritizeHoldings && !excludeHoldings) {
     const mapped = [];
@@ -118,6 +123,9 @@ export default async function handler(req, res) {
         score: r.score ?? null,
         momentumState: r.state || null,
         excess7dPp: r.btcRelative?.d7?.excessReturnPp ?? null,
+        change24h: r.market?.change24h ?? null,
+        change7d: r.market?.change7d ?? null,
+        volumeChange24h: r.market?.volumeChange24h ?? null,
       }))
     : undefined;
   const page = rows.slice(offset, offset + limit);
@@ -184,17 +192,28 @@ export default async function handler(req, res) {
 
     setup = attachFreshnessGate(setup, sourceGeneratedAt, nowMs);
     setup.btcRelative = enriched.btcRelative;
+    setup.snapshot = {
+      momentumState: row.state || null,
+      score: row.score ?? null,
+      change24h: row.market?.change24h ?? null,
+      change7d: row.market?.change7d ?? null,
+      volumeChange24h: row.market?.volumeChange24h ?? null,
+    };
     setups.push(setup);
   }
 
-  // Prefer actionable states first for research review
-  const order = { Igniting: 0, Coiling: 1, Confirmed: 2, Failed: 3, Expired: 4 };
+  const order = earlyOnly
+    ? { Coiling: 0, Igniting: 1, Confirmed: 2, Failed: 3, Expired: 4 }
+    : { Igniting: 0, Coiling: 1, Confirmed: 2, Failed: 3, Expired: 4 };
   setups.sort((a, b) => {
     const ao = a.state != null ? order[a.state] ?? 9 : 8;
     const bo = b.state != null ? order[b.state] ?? 9 : 8;
     if (ao !== bo) return ao - bo;
     return (b.setupReadiness || 0) - (a.setupReadiness || 0);
   });
+  const published = earlyOnly
+    ? setups.filter((s) => s.state === "Coiling" || s.state === "Igniting")
+    : setups;
 
   // Traction check only for Coiling/Igniting before entry-review labeling
   if (withSocial) {
@@ -242,6 +261,7 @@ export default async function handler(req, res) {
         withSocial,
         prioritizeHoldings,
         excludeHoldings,
+        earlyOnly,
         universeTotal,
         scanned: rows.length,
         nextOffset: offset + rows.length,
@@ -262,7 +282,7 @@ export default async function handler(req, res) {
           actionable: freshness.actionable,
           ...(freshness.reason ? { reason: freshness.reason } : {}),
         },
-        setups,
+        setups: published,
         ...(universe ? { universe } : {}),
         methodology: {
           states: ["Coiling", "Igniting", "Confirmed", "Failed", "Expired"],
