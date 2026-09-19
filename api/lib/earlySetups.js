@@ -400,6 +400,43 @@ export function buildEarlySetupFromMomentumRow(row, { regime = {}, nowMs = Date.
   };
 }
 
+/**
+ * Snapshot screen for "about to move" vs the momentum leaderboard.
+ * Confirmed / Overextended / large 24h-7d moves / violent volume are already extended.
+ * Building and Watch with modest moves are the pre-breakout pool. Not a trade signal.
+ */
+export function alreadyExtendedSnapshot(row) {
+  const state = String(row?.state || "");
+  if (state === "Confirmed momentum" || state === "Overextended") return true;
+  const market = row?.market || {};
+  const change7d = Number(market.change7d);
+  const change24h = Number(market.change24h);
+  const volumeChange24h = Number(market.volumeChange24h);
+  if (Number.isFinite(change7d) && change7d >= 25) return true;
+  if (Number.isFinite(change24h) && change24h >= 18) return true;
+  if (Number.isFinite(volumeChange24h) && volumeChange24h >= 250) return true;
+  return false;
+}
+
+export function selectPreBreakoutRows(rows) {
+  const pool = (rows || []).filter((row) => {
+    const state = String(row?.state || "");
+    if (state !== "Building" && state !== "Watch") return false;
+    return !alreadyExtendedSnapshot(row);
+  });
+  pool.sort((a, b) => {
+    const rank = (row) => (String(row?.state) === "Building" ? 0 : 1);
+    const vol = (row) => Math.abs(Number(row?.market?.volumeChange24h) || 0);
+    const day = (row) => Math.abs(Number(row?.market?.change24h) || 0);
+    const ar = rank(a);
+    const br = rank(b);
+    if (ar !== br) return ar - br;
+    if (vol(a) !== vol(b)) return vol(a) - vol(b);
+    return day(a) - day(b);
+  });
+  return pool;
+}
+
 export function attachFreshnessGate(setup, sourceGeneratedAt, nowMs = Date.now()) {
   const freshness = computeFreshness({
     sourceGeneratedAt,
