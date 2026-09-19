@@ -13,6 +13,8 @@ import {
   scoreSetupReadiness,
   priorResistance,
   buildEarlySetup,
+  selectPreBreakoutRows,
+  alreadyExtendedSnapshot,
 } from "../api/lib/earlySetups.js";
 import { mergeAlerts, simulatePaperEntry, resolveStopTargetHit } from "../api/lib/alerts.js";
 import { normalizeWatchlist, prioritizeRows, DEFAULT_WATCHLIST } from "../api/lib/watchlist.js";
@@ -122,6 +124,20 @@ test("alerts do not reset trigger price on refresh", () => {
   ];
   const merged = mergeAlerts(existing, incoming, { nowMs: Date.parse("2026-09-18T12:00:00.000Z") });
   assert.equal(merged[0].triggerPrice, 10);
+});
+
+test("pre-breakout pool drops confirmed and overextended names", () => {
+  const rows = [
+    { symbol: "BOOM", state: "Confirmed momentum", market: { change24h: 30, change7d: 40, volumeChange24h: 10 } },
+    { symbol: "HOT", state: "Overextended", market: { change24h: 5, change7d: 8, volumeChange24h: 10 } },
+    { symbol: "RUN", state: "Building", market: { change24h: 40, change7d: 10, volumeChange24h: 10 } },
+    { symbol: "COIL", state: "Building", market: { change24h: 4, change7d: 8, volumeChange24h: 20 } },
+    { symbol: "QUIET", state: "Watch", market: { change24h: 2, change7d: 3, volumeChange24h: 5 } },
+    { symbol: "DEAD", state: "Weak", market: { change24h: 1, change7d: 1, volumeChange24h: 1 } },
+  ];
+  assert.equal(alreadyExtendedSnapshot(rows[0]), true);
+  const picked = selectPreBreakoutRows(rows).map((r) => r.symbol);
+  assert.deepEqual(picked, ["COIL", "QUIET"]);
 });
 
 test("paper entry applies fees and slippage", () => {
