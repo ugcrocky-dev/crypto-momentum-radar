@@ -31,7 +31,7 @@ async function inflateFromParts(){
 }
 async function fetchFiles(){
   const base=process.env.CMR_SRC_BASE||"https://raw.githubusercontent.com/ugcrocky-dev/crypto-momentum-radar/87c0e71db7b118495c93cf8ef11a1119b96ba11e";
-  const files=["api/momentum.js","api/early-setups.js","api/ohlcv.js","api/social.js","api/alerts.js","api/derivatives.js","api/high-frequency.js","api/momentum/cron.js","lib/alerts.js","lib/btcRelative.js","lib/btcReturns.js","lib/derivatives.js","lib/earlySetups.js","lib/freshness.js","lib/hardGates.js","lib/momentumStorage.js","lib/ohlcv.js","lib/social.js","lib/tokenRisk.js","lib/upstashRedis.js","lib/watchlist.js","public/index.html","docs/FRESHNESS.md","docs/RESEARCH.md","tests/derivatives-social.test.js","tests/freshness.test.js","tests/research.test.js","scripts/validation_forward.js","data/validation-forward.json"];
+  const files=["api/momentum.js","api/early-setups.js","api/ohlcv.js","api/social.js","api/alerts.js","api/derivatives.js","api/high-frequency.js","api/momentum/cron.js","lib/alerts.js","lib/btcRelative.js","lib/btcReturns.js","lib/derivatives.js","lib/earlySetups.js","lib/freshness.js","lib/hardGates.js","lib/momentumStorage.js","lib/ohlcv.js","lib/social.js","lib/tokenRisk.js","lib/upstashRedis.js","lib/watchlist.js","lib/whaleAlerts.js","public/index.html","docs/FRESHNESS.md","docs/RESEARCH.md","tests/derivatives-social.test.js","tests/freshness.test.js","tests/research.test.js","scripts/validation_forward.js","data/validation-forward.json"];
   for(const rel of files){
     const dest=o.join(root,rel);
     let need=true;

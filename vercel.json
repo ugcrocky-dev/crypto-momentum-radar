@@ -13,6 +13,9 @@
     },
     "api/momentum.js": {
       "maxDuration": 60
+    },
+    "api/whale-alerts.js": {
+      "maxDuration": 60
     }
   },
   "headers": [

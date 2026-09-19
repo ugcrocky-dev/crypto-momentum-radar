@@ -74,6 +74,10 @@ Without keys, traction status is **`insufficient evidence`** (not bearish). AI m
 
 Default holdings: XRP, AERO, UNI, DOGE, HBAR, ARB, SOL, ETH (editable in research drawer; localStorage). No size/PnL inference.
 
+## Whale alerts
+
+Large DEX buys from GeckoTerminal (Ethereum, BSC, Base), minimum $10,000. The bought asset is the trade's to-token. Stable-to-stable pools are skipped. Wallet profit history is **not** in this source — a repeat buy in the same scan is not a track record. Dollar size is marked unreliable when it exceeds pool reserves. Hard gates run on the bought contract and block copying only. `copyingEnabled` stays false.
+
 ## Hard gates (copy block, not a hide)
 
 Hard gates decide whether a coin may be copied. They do not remove it from the leaderboard or the research list. Missing evidence fails closed.
