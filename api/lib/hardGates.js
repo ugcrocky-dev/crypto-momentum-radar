@@ -80,6 +80,14 @@ function finite(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function taxShare(value) {
+  // GoPlus often returns "" for no tax on some chains after a full scan.
+  if (value === "" || value === null || value === undefined) return 0;
+  const n = finite(value);
+  if (n == null || n < 0) return null;
+  return n > 1 ? n / 100 : n;
+}
+
 function asShare(value, scale) {
   const n = finite(value);
   if (n == null || n < 0) return null;
@@ -171,8 +179,8 @@ export function evaluateHardGates(input = {}) {
     blocked.push("not_open_source");
   }
 
-  const buyTax = asShare(item.buy_tax, finite(item.buy_tax) > 1 ? 100 : 1);
-  const sellTax = asShare(item.sell_tax, finite(item.sell_tax) > 1 ? 100 : 1);
+  const buyTax = "buy_tax" in item ? taxShare(item.buy_tax) : null;
+  const sellTax = "sell_tax" in item ? taxShare(item.sell_tax) : null;
   if (buyTax == null) missing.push("buy_tax");
   else if (buyTax > HARD_GATES.maxBuyTax) blocked.push("high_buy_tax");
   if (sellTax == null) missing.push("sell_tax");
