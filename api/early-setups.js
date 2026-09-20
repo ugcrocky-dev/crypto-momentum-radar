@@ -9,10 +9,13 @@ import {
   buildEarlySetup,
   buildEarlySetupFromMomentumRow,
   attachFreshnessGate,
+  selectPreBreakoutRows,
 } from "../lib/earlySetups.js";
-import { fetchCandles } from "../lib/ohlcv.js";
+import { fetchCandles, lookupCoinGeckoId, resolveCoinGeckoId } from "../lib/ohlcv.js";
+import { enrichRowsWithRisk } from "../lib/tokenRisk.js";
+import { HARD_GATE_PUBLIC } from "../lib/hardGates.js";
 import { buildTractionCard } from "../lib/social.js";
-import { DEFAULT_WATCHLIST } from "../lib/watchlist.js";
+import { DEFAULT_WATCHLIST, normalizeWatchlist, prioritizeRows } from "../lib/watchlist.js";
 
 async function loadMomentumRows() {
   const base =
@@ -31,6 +34,11 @@ async function loadMomentumRows() {
   }
 }
 
+function parseSymbolsParam(raw) {
+  if (!raw) return [];
+  return normalizeWatchlist(String(raw).split(/[,+\s]+/));
+}
+
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -43,10 +51,19 @@ export default async function handler(req, res) {
 
   const url = new URL(req.url || "/", "http://localhost");
   const timeframe = url.searchParams.get("timeframe") || "1h";
-  const limit = Math.min(30, Number(url.searchParams.get("limit") || 20));
+  const limit = Math.min(12, Math.max(1, Number(url.searchParams.get("limit") || 8)));
+  const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0) || 0));
   const withCandles = url.searchParams.get("candles") !== "0";
   const withSocial = url.searchParams.get("social") === "1";
   const watchOnly = url.searchParams.get("watchlist") === "1";
+  // Holdings mode is opt-in. Research scans the ranked universe so new coins can surface.
+  const prioritizeHoldings = url.searchParams.get("prioritizeHoldings") === "1";
+  const excludeHoldings = url.searchParams.get("excludeHoldings") === "1";
+  const earlyOnly = url.searchParams.get("early") !== "0";
+  const wantUniverse = url.searchParams.get("universe") !== "0";
+  const symbolsParam = parseSymbolsParam(url.searchParams.get("symbols"));
+  const focusList = symbolsParam.length ? symbolsParam : DEFAULT_WATCHLIST;
+  const holdSet = new Set(focusList);
 
   const nowMs = Date.now();
   let momentum;
@@ -78,29 +95,79 @@ export default async function handler(req, res) {
 
   let rows = Array.isArray(momentum?.data?.rows) ? momentum.data.rows.slice() : [];
   if (watchOnly) {
-    const set = new Set(DEFAULT_WATCHLIST);
-    rows = rows.filter((r) => set.has(String(r.symbol).toUpperCase()));
+    rows = rows.filter((r) => holdSet.has(String(r.symbol).toUpperCase()));
+  } else if (excludeHoldings) {
+    rows = rows.filter((r) => !holdSet.has(String(r.symbol).toUpperCase()));
+  } else if (prioritizeHoldings) {
+    rows = prioritizeRows(rows, focusList);
   }
-  rows = rows.slice(0, limit);
+  if (earlyOnly && !watchOnly) {
+    rows = selectPreBreakoutRows(rows);
+  }
+  try {
+    const enrichedRisk = await enrichRowsWithRisk(rows, { maxChecks: 16 });
+    rows = enrichedRisk.rows;
+  } catch {
+    /* keep rows unlabeled if risk provider fails */
+  }
+  // Holdings mode only: prefer symbols that already have a CoinGecko id.
+  if (withCandles && prioritizeHoldings && !excludeHoldings) {
+    const mapped = [];
+    const unmapped = [];
+    for (const row of rows) {
+      const sym = String(row?.symbol || "").toUpperCase();
+      if (lookupCoinGeckoId(sym, row?.id || null)) mapped.push(row);
+      else unmapped.push(row);
+    }
+    rows = [...mapped, ...unmapped];
+  }
+
+  const universeTotal = rows.length;
+  const universe = wantUniverse
+    ? rows.map((r) => ({
+        symbol: r.symbol,
+        name: r.name || null,
+        rank: r.rank ?? null,
+        score: r.score ?? null,
+        momentumState: r.state || null,
+        excess7dPp: r.btcRelative?.d7?.excessReturnPp ?? null,
+        change24h: r.market?.change24h ?? null,
+        change7d: r.market?.change7d ?? null,
+        volumeChange24h: r.market?.volumeChange24h ?? null,
+        hardGate: r.risk?.hardGate?.status || "not_cleared",
+      }))
+    : undefined;
+  const page = rows.slice(offset, offset + limit);
+  rows = page;
 
   const setups = [];
-  for (const row of rows) {
+  let candleFetchesDisabled = false;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const enriched = enrichRowBtcRelative(row, regime);
     const shortExcess = enriched.btcRelative?.d7?.excessReturnPp ?? null;
 
     let setup;
-    if (withCandles && row.symbol) {
+    if (withCandles && row.symbol && !candleFetchesDisabled) {
       try {
+        // Space CoinGecko calls — free tier rate-limits burst fetches on Vercel.
+        if (i > 0) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        const coinId =
+          row.id ||
+          (await resolveCoinGeckoId(row.symbol, null)) ||
+          null;
         const ohlcv = await fetchCandles({
           symbol: row.symbol,
-          coinId: row.id || null,
+          coinId,
           timeframe,
           limit: 120,
         });
         setup = buildEarlySetup({
           symbol: row.symbol,
           name: row.name,
-          id: row.id || row.symbol,
+          id: row.id || coinId || row.symbol,
           timeframe,
           candles: ohlcv.candles,
           momentumRow: row,
@@ -118,26 +185,46 @@ export default async function handler(req, res) {
             : null,
         };
       } catch (err) {
+        const detail = sanitizeError(err);
         setup = buildEarlySetupFromMomentumRow(row, { regime, nowMs, freshness });
-        setup.ohlcvError = sanitizeError(err);
+        setup.ohlcvError = detail;
+        if (String(detail).includes("provider_rate_limited")) {
+          candleFetchesDisabled = true;
+        }
       }
+    } else if (withCandles && row.symbol && candleFetchesDisabled) {
+      setup = buildEarlySetupFromMomentumRow(row, { regime, nowMs, freshness });
+      setup.ohlcvError = "ohlcv_skipped:provider_rate_limited";
     } else {
       setup = buildEarlySetupFromMomentumRow(row, { regime, nowMs, freshness });
     }
 
     setup = attachFreshnessGate(setup, sourceGeneratedAt, nowMs);
     setup.btcRelative = enriched.btcRelative;
+    setup.snapshot = {
+      momentumState: row.state || null,
+      score: row.score ?? null,
+      change24h: row.market?.change24h ?? null,
+      change7d: row.market?.change7d ?? null,
+      volumeChange24h: row.market?.volumeChange24h ?? null,
+      risk: row.risk || null,
+    };
     setups.push(setup);
   }
 
-  // Prefer actionable states first for research review
-  const order = { Igniting: 0, Coiling: 1, Confirmed: 2, Failed: 3, Expired: 4 };
+  const order = earlyOnly
+    ? { Coiling: 0, Igniting: 1, Confirmed: 2, Failed: 3, Expired: 4 }
+    : { Igniting: 0, Coiling: 1, Confirmed: 2, Failed: 3, Expired: 4 };
   setups.sort((a, b) => {
     const ao = a.state != null ? order[a.state] ?? 9 : 8;
     const bo = b.state != null ? order[b.state] ?? 9 : 8;
     if (ao !== bo) return ao - bo;
     return (b.setupReadiness || 0) - (a.setupReadiness || 0);
   });
+
+  const published = earlyOnly
+    ? setups.filter((s) => s.state === "Coiling" || s.state === "Igniting")
+    : setups;
 
   // Traction check only for Coiling/Igniting before entry-review labeling
   if (withSocial) {
@@ -173,6 +260,14 @@ export default async function handler(req, res) {
     }
   }
 
+  for (const setup of setups) {
+    const gate = setup.snapshot?.risk?.hardGate;
+    setup.copyAllowed = false;
+    if (!gate || gate.pass !== true) {
+      setup.entryReview = "blocked_hard_gate";
+    }
+  }
+
   res.statusCode = 200;
   res.end(
     JSON.stringify({
@@ -180,8 +275,17 @@ export default async function handler(req, res) {
       metadata: {
         timeframe,
         limit,
+        offset,
         withCandles,
         withSocial,
+        prioritizeHoldings,
+        excludeHoldings,
+        earlyOnly,
+        universeTotal,
+        scanned: rows.length,
+        nextOffset: offset + rows.length,
+        done: offset + rows.length >= universeTotal,
+        focusList: excludeHoldings ? focusList : prioritizeHoldings || watchOnly ? focusList : null,
         fetchedAt: new Date(nowMs).toISOString(),
         momentumSource: momentum?.source || null,
       },
@@ -197,10 +301,12 @@ export default async function handler(req, res) {
           actionable: freshness.actionable,
           ...(freshness.reason ? { reason: freshness.reason } : {}),
         },
-        setups,
+        setups: published,
+        ...(universe ? { universe } : {}),
         methodology: {
           states: ["Coiling", "Igniting", "Confirmed", "Failed", "Expired"],
-          note: "Compression is direction-neutral. Setup readiness ≠ directional confidence. Hypothesis weights — not proven optimal. Not trade advice. Social never overrides invalid technical conditions.",
+          note: "Compression is direction-neutral. Setup readiness ≠ directional confidence. Hypothesis weights — not proven optimal. Not trade advice. Social never overrides invalid technical conditions. When Binance is geo-blocked, CoinGecko approximate OHLC may be used. Hard gates block copying only and do not hide coins.",
+          hardGates: HARD_GATE_PUBLIC,
         },
       },
     })

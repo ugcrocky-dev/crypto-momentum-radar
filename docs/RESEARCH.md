@@ -74,6 +74,25 @@ Without keys, traction status is **`insufficient evidence`** (not bearish). AI m
 
 Default holdings: XRP, AERO, UNI, DOGE, HBAR, ARB, SOL, ETH (editable in research drawer; localStorage). No size/PnL inference.
 
+## Whale alerts
+
+Large DEX buys from GeckoTerminal (Ethereum, BSC, Base), minimum $10,000. The bought asset is the trade's to-token. Stable-to-stable pools are skipped. Wallet profit history is **not** in this source — a repeat buy in the same scan is not a track record. Dollar size is marked unreliable when it exceeds pool reserves. Hard gates run on the bought contract and block copying only. `copyingEnabled` stays false.
+
+## Hard gates (copy block, not a hide)
+
+Hard gates decide whether a coin may be copied. They do not remove it from the leaderboard or the research list. Missing evidence fails closed.
+
+| Gate | Block when |
+|---|---|
+| Contract | honeypot, mintable, transfer pausable, hidden owner, owner can change balances, reclaim ownership, selfdestruct, blacklist function, modifiable tax, cannot buy, creator honeypot history, source not open |
+| Tax | buy or sell tax above 10% |
+| Liquidity lock | LP holders exist and locked share under 5%, or lock data missing |
+| Concentration | any non-excluded holder above 15%, top 10 above 50% after burn / lock / CEX / pair tags, or owner/creator supply above 15% |
+| Liquidity | known pool liquidity under $50,000, or liquidity missing |
+| Unscanned | no GoPlus result, error, unresolved id, or no EVM contract |
+
+Native L1s (BTC, ETH, SOL, and the other chain assets in `NATIVE_L1_SYMBOLS`) are exempt from ERC20 gates. That exemption is not a trade approval. `copyAllowed` stays false — this app does not send live orders. A clear gate only means the safety checks did not reject the coin.
+
 ## Validation status
 
 Comparative A/B/C validation is **pending forward paper tracking**. Do not claim predictive edge.

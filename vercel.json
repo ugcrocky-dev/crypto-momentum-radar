@@ -7,6 +7,17 @@
       "schedule": "*/15 * * * *"
     }
   ],
+  "functions": {
+    "api/early-setups.js": {
+      "maxDuration": 60
+    },
+    "api/momentum.js": {
+      "maxDuration": 60
+    },
+    "api/whale-alerts.js": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/api/(.*)",

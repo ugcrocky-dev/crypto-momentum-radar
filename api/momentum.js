@@ -10,6 +10,8 @@ import { enrichSnapshotBtcRelative } from "../lib/btcRelative.js";
 import { enrichRegimeBtcReturns } from "../lib/btcReturns.js";
 import { assessRotationHypothesis } from "../lib/derivatives.js";
 import { prioritizeRows, DEFAULT_WATCHLIST } from "../lib/watchlist.js";
+import { enrichRowsWithRisk } from "../lib/tokenRisk.js";
+import { HARD_GATE_PUBLIC } from "../lib/hardGates.js";
 import {
   readRefreshStatus,
   readSnapshotEnvelope,
@@ -260,8 +262,27 @@ export default async function handler(req, res) {
   data.rotation = assessRotationHypothesis(data.regime || {}, data.rows || []);
   if (btcReturnsMeta) data.btcReturnsMeta = btcReturnsMeta;
 
-  // Optional watchlist prioritization via ?watchlist=XRP,SOL or default holdings
   const reqUrl = new URL(req.url || "/", "http://localhost");
+
+  // Label FOMO-style contract risks (mintable / pausable / unlocked LP) — do not hide.
+  const includeRisk = reqUrl.searchParams.get("risk") !== "0";
+  if (includeRisk && Array.isArray(data.rows)) {
+    try {
+      const enrichedRisk = await enrichRowsWithRisk(data.rows, { maxChecks: 24 });
+      data.rows = enrichedRisk.rows;
+      data.riskFilter = {
+        mode: "label",
+        provider: "goplus",
+        note: "Risky coins stay visible. Hard gates block copying only — they do not remove rows.",
+        ...enrichedRisk.riskMeta,
+      };
+      data.hardGates = HARD_GATE_PUBLIC;
+    } catch (err) {
+      data.riskFilter = { mode: "label", error: sanitizeError(err) };
+    }
+  }
+
+  // Optional watchlist prioritization via ?watchlist=XRP,SOL or default holdings
   const watchParam = reqUrl.searchParams.get("watchlist");
   const watchlist = watchParam
     ? watchParam.split(/[\s,]+/).filter(Boolean)
