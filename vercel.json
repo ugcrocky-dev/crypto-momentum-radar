@@ -16,6 +16,9 @@
     },
     "api/whale-alerts.js": {
       "maxDuration": 60
+    },
+    "api/radar-product.js": {
+      "maxDuration": 60
     }
   },
   "headers": [

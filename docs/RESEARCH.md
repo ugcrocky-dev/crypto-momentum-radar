@@ -74,9 +74,22 @@ Without keys, traction status is **`insufficient evidence`** (not bearish). AI m
 
 Default holdings: XRP, AERO, UNI, DOGE, HBAR, ARB, SOL, ETH (editable in research drawer; localStorage). No size/PnL inference.
 
+## Radar product (both feeds)
+
+One research product with two signal feeds. Copying stays off on both.
+
+| Feed | Source | What it shows |
+|---|---|---|
+| Trusted wallets | [FOMO Robinhood Radar](https://fomoradar.app) public API | Named fomo.family traders on Robinhood Chain, cohort score / conviction / fresh launches |
+| Large DEX buys | GeckoTerminal | Buys ≥ $10k on Ethereum, BSC, Base — no wallet profit track record |
+
+Hard gates (GoPlus, including Robinhood chain id `4663`) run on both. Blocked and uncleared coins stay visible. Attribution to FOMO Radar is required; this app does not claim to be fomo.family or fomoradar.app. Trading money is not spent on paid whale APIs.
+
+Endpoint: `GET /api/radar-product`
+
 ## Whale alerts
 
-Large DEX buys from GeckoTerminal (Ethereum, BSC, Base), minimum $10,000. The bought asset is the trade's to-token. Stable-to-stable pools are skipped. Wallet profit history is **not** in this source — a repeat buy in the same scan is not a track record. Dollar size is marked unreliable when it exceeds pool reserves. Hard gates run on the bought contract and block copying only. `copyingEnabled` stays false.
+Large DEX buys from GeckoTerminal (Ethereum, BSC, Base), minimum $10,000. The bought asset is the trade's to-token. Stable-to-stable pools are skipped. Wallet profit history is **not** in this source — a repeat buy in the same scan is not a track record. Dollar size is marked unreliable when it exceeds pool reserves. Hard gates run on the bought contract and block copying only. `copyingEnabled` stays false. Prefer `/api/radar-product` for the combined product view.
 
 ## Hard gates (copy block, not a hide)
 
