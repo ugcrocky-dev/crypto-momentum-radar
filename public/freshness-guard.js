@@ -17,7 +17,11 @@
   let researchOpen = false;
   let panelsLoaded = false;
   let researchRefreshTimer = null;
+  let fomoAlertTimer = null;
+  let lastFomoAlertIds = {};
   const RESEARCH_REFRESH_MS = 2 * 60 * 1000;
+  const FOMO_ALERT_POLL_MS = 30 * 1000;
+  const FOMO_SEEN_KEY = "cmr:fomo-alert-seen-ids:v1";
 
   function parseTs(v) {
     if (v == null || v === "") return null;
@@ -93,6 +97,8 @@
       "#cmr-research .ok{color:#9dffb9}",
       "#cmr-research .panel{display:none}",
       "#cmr-research .panel.active{display:block}",
+      "#cmr-fomo-alert-banner{position:sticky;top:44px;z-index:9998;padding:10px 16px;font:600 12px/1.4 'IBM Plex Mono',ui-monospace,monospace;background:#1a1408;color:#ffd27a;border-bottom:1px solid rgba(255,210,122,.25);display:none}",
+      "#cmr-fomo-alert-banner[data-show=true]{display:block}",
       "@media (max-width:640px){#cmr-research,#cmr-research-toggle{right:8px;left:8px;width:auto;bottom:8px}#cmr-research-toggle{left:auto}}",
     ].join("");
     document.head.appendChild(style);
@@ -132,6 +138,105 @@
       (f.ageHours != null ? f.ageHours + "h" : "—") +
       " · src " + (f.sourceGeneratedAt || "—") +
       "<small>" + actionable + " · " + refreshLine + " · " + hfLine + "</small>";
+  }
+
+  function ensureFomoAlertBanner() {
+    ensureStyles();
+    let el = document.getElementById("cmr-fomo-alert-banner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "cmr-fomo-alert-banner";
+      el.setAttribute("role", "status");
+      el.dataset.show = "false";
+      const main = document.getElementById("cmr-freshness-banner");
+      if (main && main.parentNode) main.parentNode.insertBefore(el, main.nextSibling);
+      else document.body.insertBefore(el, document.body.firstChild);
+    }
+    return el;
+  }
+
+  function loadSeenFomoIds() {
+    try {
+      const raw = localStorage.getItem(FOMO_SEEN_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveSeenFomoIds(map) {
+    try { localStorage.setItem(FOMO_SEEN_KEY, JSON.stringify(map)); } catch (_) {}
+  }
+
+  function showBrowserFomoNotice(alert) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+      new Notification("FOMO " + (alert.symbol || "alert"), {
+        body: (alert.buyers || 0) + " trusted buyers · copying off",
+        tag: alert.id || alert.tokenAddress,
+      });
+    } catch (_) {}
+  }
+
+  function paintFomoAlertBanner(alerts) {
+    const el = ensureFomoAlertBanner();
+    if (!alerts || !alerts.length) {
+      el.dataset.show = "false";
+      el.innerHTML = "";
+      return;
+    }
+    const newest = alerts[0];
+    el.dataset.show = "true";
+    el.innerHTML =
+      "FOMO alert: <strong>" + esc(newest.symbol || "?") + "</strong> · " +
+      (newest.buyers || 0) + " trusted" +
+      "<small>Immediate cohort alert · copying off · not auto-trade · tap Research → Whales</small>";
+  }
+
+  async function pollFomoAlerts(opts) {
+    const forcePass = opts && opts.forcePass;
+    try {
+      if (forcePass) {
+        await origFetch("/api/fomo-alerts", { method: "POST" }).catch(function () {});
+      }
+      const res = await origFetch("/api/fomo-alerts");
+      const json = await res.json();
+      const alerts = (json.data && json.data.alerts) || [];
+      const seen = loadSeenFomoIds();
+      const fresh = [];
+      alerts.forEach(function (a) {
+        const id = a.id || a.tokenAddress;
+        if (!id) return;
+        if (!seen[id] && !lastFomoAlertIds[id]) fresh.push(a);
+        lastFomoAlertIds[id] = true;
+      });
+      if (fresh.length) {
+        fresh.forEach(function (a) {
+          const id = a.id || a.tokenAddress;
+          seen[id] = Date.now();
+          showBrowserFomoNotice(a);
+        });
+        saveSeenFomoIds(seen);
+        paintFomoAlertBanner(fresh);
+        if (researchOpen && activeTab === "whales") {
+          panelsLoaded = false;
+          loadWhales();
+        }
+      } else if (alerts.length) {
+        paintFomoAlertBanner(alerts.slice(0, 1));
+      }
+    } catch (_) {}
+  }
+
+  function startFomoAlertPoll() {
+    if (fomoAlertTimer) return;
+    pollFomoAlerts({ forcePass: true });
+    fomoAlertTimer = setInterval(function () {
+      if (document.hidden) return;
+      pollFomoAlerts({ forcePass: true });
+    }, FOMO_ALERT_POLL_MS);
   }
 
   function ensureToggle() {
@@ -221,7 +326,7 @@
       "<button type='button' data-tab='traction'>Traction</button>",
       "<button type='button' data-tab='holdings'>Holdings</button>",
       "</div>",
-      "<div id='cmr-panel-whales' class='panel'><div class='muted'>Product radar: trusted FOMO wallets + large DEX buys. Hard gates on both. Copying is off.</div><div id='cmr-whales'></div></div>",
+      "<div id='cmr-panel-whales' class='panel'><div class='muted'>Product radar: trusted FOMO wallets + large DEX buys. Risky coins labeled. Copying is off.</div><div id='cmr-whales'></div></div>",
       "<div id='cmr-panel-setups' class='panel'><div class='muted'>Pre-breakout only — not the momentum leaderboard. Confirmed and Overextended coins are excluded. Compression ≠ bullish.</div><div id='cmr-setups'></div></div>",
       "<div id='cmr-panel-btc' class='panel'><div class='muted'>Filters use excess pp & coin/BTC % — 90d never extrapolated</div>",
       "<select id='cmr-btc-filter'><option value=''>Ranked universe</option>",
@@ -281,14 +386,6 @@
     ensureResearch().querySelector("#cmr-watch-list").textContent = loadWatch().join(" · ") || "(empty)";
   }
 
-  function hardGateHtml(risk) {
-    const g = risk && risk.hardGate;
-    if (!g || g.pass) return "";
-    const reasons = g.status === "blocked" ? g.blocked : g.missing;
-    const why = (reasons || []).join("; ").split("_").join(" ");
-    const label = g.status === "blocked" ? "Hard gate: blocked" : "Hard gate: not cleared";
-    return "<div class='warn'>" + label + (why ? " — " + why : "") + "</div>";
-  }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -324,14 +421,12 @@
       "<div class='cmr-row'><span><strong>" + (s.symbol || "?") + "</strong> " +
       (s.state || "n/a") +
       (snap.risk && snap.risk.risky ? " <span class='warn'>Risky coin</span>" : "") +
-      (snap.risk && snap.risk.hardGate && !snap.risk.hardGate.pass ? " <span class='warn'>Hard gate</span>" : "") +
       "<div class='muted'>ready " + (s.setupReadiness != null ? s.setupReadiness : "—") +
       " · " + (s.dataConfidence || "") + " · " + move + brLine + ohlcvNote +
       "</div>" +
       (snap.risk && snap.risk.risky && snap.risk.label
         ? "<div class='warn'>" + snap.risk.label + "</div>"
         : "") +
-      hardGateHtml(snap.risk) +
       evidence.map(function (line) { return "<div class='muted'>" + line + "</div>"; }).join("") +
       (s.trigger ? "<div class='muted'>trigger: " + s.trigger + "</div>" : "") +
       "</span></div>"
@@ -340,8 +435,6 @@
 
   function whaleRowHtml(a) {
     const risk = a.risk || {};
-    const gate = risk.hardGate || {};
-    const gateTag = gate.pass ? "" : " <span class='warn'>Hard gate</span>";
     const risky = risk.risky ? " <span class='warn'>Risky coin</span>" : "";
     const sizeNote = a.usdReliable ? "" : " · USD print exceeds pool reserves";
     const repeat = a.repeatInWindow
@@ -349,13 +442,12 @@
       : "";
     return (
       "<div class='cmr-row'><span><strong>" + esc(a.symbol || a.walletShort || "?") + "</strong> " +
-      esc(a.chainLabel || a.chain || "") + risky + gateTag +
+      esc(a.chainLabel || a.chain || "") + risky +
       "<div class='muted'>" + esc(a.walletShort || "") + " bought " + fmtUsd(a.usd) + sizeNote +
       (a.pool ? " · " + esc(a.pool) : "") +
       (a.at ? " · " + esc(String(a.at).replace("T", " ").replace("Z", "Z")) : "") +
       "</div>" +
       (risk.label ? "<div class='warn'>" + esc(risk.label) + "</div>" : "") +
-      hardGateHtml(risk) +
       repeat +
       (a.txUrl ? "<div class='muted'><a href='" + esc(a.txUrl) + "' target='_blank' rel='noopener'>tx</a> · copying off</div>" : "") +
       "</span></div>"
@@ -364,8 +456,6 @@
 
   function trustedRowHtml(a) {
     const risk = a.risk || {};
-    const gate = risk.hardGate || {};
-    const gateTag = gate.pass ? "" : " <span class='warn'>Hard gate</span>";
     const risky = risk.risky ? " <span class='warn'>Risky coin</span>" : "";
     const who = (a.who || []).slice(0, 4).join(", ");
     const more = a.whoTotal > 4 ? " +" + (a.whoTotal - 4) : "";
@@ -373,7 +463,7 @@
       "<div class='cmr-row'><span><strong>" + esc(a.symbol || "?") + "</strong> " +
       esc(a.chainLabel || "Robinhood") +
       (a.kind === "fresh" ? " <span class='ok'>Fresh</span>" : "") +
-      risky + gateTag +
+      risky +
       "<div class='muted'>" + (a.buyers || 0) + " trusted buyers · score " +
       (a.avgScore != null ? Math.round(a.avgScore) : "—") +
       " · " + fmtUsd(a.usd) +
@@ -381,7 +471,6 @@
       "</div>" +
       (who ? "<div class='muted'>" + esc(who) + esc(more) + "</div>" : "") +
       (risk.label ? "<div class='warn'>" + esc(risk.label) + "</div>" : "") +
-      hardGateHtml(risk) +
       "<div class='muted'>copying off · via FOMO Radar</div>" +
       "</span></div>"
     );
@@ -391,6 +480,11 @@
     const box = ensureResearch().querySelector("#cmr-whales");
     box.innerHTML = "<div class='muted'>Loading both radar feeds…</div>";
     try {
+      const alertRes = await origFetch("/api/fomo-alerts");
+      const alertJson = await alertRes.json();
+      const immediate = (alertJson.data && alertJson.data.alerts) || [];
+      const notify = (alertJson.data && alertJson.data.notify) || {};
+
       const res = await origFetch("/api/radar-product");
       const json = await res.json();
       const trusted = (json.data && json.data.trustedWallets) || [];
@@ -398,7 +492,14 @@
       const product = (json.data && json.data.product) || {};
       let html = "<div class='muted'>" + esc(product.note || "Both feeds. Copying off.") + "</div>";
 
-      html += "<div style='margin-top:10px'><strong>Trusted wallets</strong></div>";
+      html += "<div style='margin-top:10px'><strong>Immediate FOMO alerts</strong></div>";
+      html += "<div class='muted'>New trusted-wallet buys as they appear. Auto-trade is off." +
+        (notify.any ? " Push channel configured." : " Add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for phone push.") +
+        "</div>";
+      if (!immediate.length) html += "<div class='muted'>No stored FOMO alerts yet — watcher seeds on first cron, then alerts on new names.</div>";
+      else html += immediate.slice(0, 8).map(trustedRowHtml).join("");
+
+      html += "<div style='margin-top:12px'><strong>Trusted wallets</strong></div>";
       html += "<div class='muted'>FOMO Robinhood Radar — named traders, cohort score. Not a profit guarantee.</div>";
       if (!trusted.length) html += "<div class='muted'>No trusted-wallet signals right now.</div>";
       else html += trusted.map(trustedRowHtml).join("");
@@ -446,9 +547,6 @@
         html += rest.map(function (u) {
           return "<div class='cmr-row'><span><strong>" + (u.symbol || "?") + "</strong> " +
             (u.momentumState || "") +
-            (u.hardGate && u.hardGate !== "clear" && u.hardGate !== "exempt"
-              ? " <span class='warn'>" + (u.hardGate === "blocked" ? "Hard gate: blocked" : "Hard gate: not cleared") + "</span>"
-              : "") +
             "<div class='muted'>24h " + fmtPct(u.change24h) + " · 7d " + fmtPct(u.change7d) +
             " · vol " + fmtPct(u.volumeChange24h) + "</div></span></div>";
         }).join("");
@@ -482,12 +580,10 @@
           "<div class='cmr-row'><span><strong>" + r.symbol + "</strong>" +
           (watch.has(String(r.symbol).toUpperCase()) ? " ★" : "") +
           (r.risk && r.risk.risky ? " <span class='warn'>Risky coin</span>" : "") +
-          (r.risk && r.risk.hardGate && !r.risk.hardGate.pass ? " <span class='warn'>Hard gate</span>" : "") +
           "<div class='muted'>7d excess " + d7 + " · 30d " + d30 + " · 90d " + d90 + "</div>" +
           (r.risk && r.risk.risky && r.risk.label
             ? "<div class='warn'>" + r.risk.label + "</div>"
             : "") +
-          hardGateHtml(r.risk) +
           "</span></div>"
         );
       }).join("");
@@ -595,6 +691,7 @@
 
   function boot() {
     ensureBanner();
+    ensureFomoAlertBanner();
     ensureToggle();
     ensureResearch();
     renderWatch();
@@ -602,6 +699,10 @@
     syncTabs();
     // Always start collapsed so the homepage stays usable. User can reopen via the Research button.
     setResearchOpen(false);
+    startFomoAlertPoll();
+    if ("Notification" in window && Notification.permission === "default") {
+      try { Notification.requestPermission(); } catch (_) {}
+    }
     setInterval(function () {
       if (lastMain) patchMomentumPayload(lastMain);
       if (lastHf) patchHfPayload(lastHf);
@@ -611,6 +712,7 @@
       if (document.hidden || !researchOpen) return;
       panelsLoaded = false;
       loadActivePanel(true);
+      pollFomoAlerts({ forcePass: true });
     });
   }
 
