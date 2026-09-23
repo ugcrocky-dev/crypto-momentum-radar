@@ -15,10 +15,10 @@ import { attachRiskLabels } from "./whaleAlerts.js";
 import { notifyConfigured, notifyFomoAlert } from "./notify.js";
 import { sanitizeError } from "./freshness.js";
 
-// v2: clear-preferred alerts (resets empty v1 baseline so clear FOMO can alert now)
-const SEEN_KEY = "cmr:fomo-alert-seen:v2";
-const INIT_KEY = "cmr:fomo-alert-init:v2";
-const LIST_KEY = "cmr:fomo-alerts:v2";
+// v3: ntfy phone channel + clear-preferred alerts
+const SEEN_KEY = "cmr:fomo-alert-seen:v3";
+const INIT_KEY = "cmr:fomo-alert-init:v3";
+const LIST_KEY = "cmr:fomo-alerts:v3";
 const MAX_ALERTS = 40;
 const SEEN_TTL_SEC = 14 * 24 * 60 * 60;
 
