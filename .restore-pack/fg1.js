@@ -1,4 +1,4 @@
-cmr-close{font:inherit;background:transparent;color:#c9d2e0;border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:4px 8px;cursor:pointer}",
+ont:inherit;background:transparent;color:#c9d2e0;border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:4px 8px;cursor:pointer}",
       "#cmr-research .tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}",
       "#cmr-research .tabs button{font:inherit;background:#121826;color:#c9d2e0;border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:6px 8px;cursor:pointer}",
       "#cmr-research .tabs button[aria-selected=true]{background:#1c2a44;color:#fff;border-color:rgba(255,255,255,.28)}",
@@ -81,4 +81,4 @@ cmr-close{font:inherit;background:transparent;color:#c9d2e0;border:1px solid rgb
   }
 
   function saveSeenFomoIds(map) {
-    try { localStorage.setItem(FOMO_SEEN_KEY, 
+    try { localStorage.setItem(FOMO_SEEN_KEY, JSON.stringify(map)); 
