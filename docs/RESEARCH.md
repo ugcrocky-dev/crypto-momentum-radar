@@ -76,15 +76,15 @@ Default holdings: XRP, AERO, UNI, DOGE, HBAR, ARB, SOL, ETH (editable in researc
 
 ## Immediate FOMO alerts
 
-Cron (`/api/fomo-alerts/cron`, every minute) and an on-page poller watch [FOMO Robinhood Radar](https://fomoradar.app) for **new** trusted-wallet cohort names. The first pass seeds a baseline without blasting old names. Later new mints are stored, shown under Research → Whales, and optionally pushed.
+Cron (`/api/fomo-alerts/cron`, every minute) and an on-page poller watch [FOMO Robinhood Radar](https://fomoradar.app). **Clear** GoPlus coins alert immediately (first pass + later new mints). Risky coins stay visible with a Risky coin label but do not get outbound push.
 
 | Channel | Env | Notes |
 |---|---|---|
-| In-app banner + browser Notification | none | Works when the site tab is open |
-| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional phone push |
-| Webhook | `ALERT_WEBHOOK_URL` | Optional POST JSON |
+| In-app banner + browser Notification | none | Works when the site tab is open (all new alerts) |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional phone push for **clear** coins only |
+| Webhook | `ALERT_WEBHOOK_URL` | Optional POST JSON for **clear** coins only |
 
-`copyingEnabled` and `autoTrade` stay **false**. Risky coins may still be labeled. This is not automatic FOMO trading.
+`copyingEnabled` and `autoTrade` stay **false**. This is not automatic FOMO trading.
 
 ## Radar product (both feeds)
 
