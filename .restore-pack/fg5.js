@@ -81,4 +81,4 @@
         const br = r.btcRelative || {};
         const d7 = br.d7 && br.d7.available ? br.d7.excessReturnPp + "pp / " + br.d7.coinBtcReturnPct + "%" : "N/A";
         const d30 = br.d30 && br.d30.available ? br.d30.excessReturnPp + "pp" : "N/A";
-        const d90 = br.d90 && br.d90.available ? br.d90.excessReturnPct || br.d90.excessReturnPp + "pp" : "N/A";
+        const d90 = br.d90 && br.d90.a

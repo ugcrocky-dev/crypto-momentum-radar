@@ -1,8 +1,4 @@
-39;" }[c];
-    });
-  }
-
-  function fmtUsd(v) {
+ {
     const n = Number(v);
     if (!Number.isFinite(n)) return "—";
     if (n >= 1e6) return "$" + (Math.round(n / 1e5) / 10) + "M";
@@ -99,4 +95,6 @@
       const trusted = (json.data && json.data.trustedWallets) || [];
       const large = (json.data && json.data.largeBuys) || [];
       const product = (json.data && json.data.product) || {};
-      let html = "<div class='muted'>" + esc(product.note || "Both feeds. Copying off.") + 
+      let html = "<div class='muted'>" + esc(product.note || "Both feeds. Copying off.") + "</div>";
+
+      html += "<div style='margin-top:10px'>

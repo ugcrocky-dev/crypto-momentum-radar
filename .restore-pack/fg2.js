@@ -1,4 +1,4 @@
-JSON.stringify(map)); } catch (_) {}
+} catch (_) {}
   }
 
   function showBrowserFomoNotice(alert) {
@@ -136,4 +136,4 @@ JSON.stringify(map)); } catch (_) {}
     if (activeTab === "whales") loadWhales();
     else if (activeTab === "setups") loadSetups();
     else if (activeTab === "btc") loadBtc();
-    else if (activ
+    else if (activeTab === "traction") loadTraction

@@ -1,4 +1,4 @@
-eTab === "traction") loadTraction();
+();
     else if (activeTab === "holdings") renderWatch();
   }
 
@@ -89,4 +89,8 @@ eTab === "traction") loadTraction();
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function fmtUsd(v)

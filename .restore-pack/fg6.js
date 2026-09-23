@@ -1,4 +1,4 @@
-sReturnPct || br.d90.excessReturnPp + "pp" : "N/A";
+vailable ? br.d90.excessReturnPct || br.d90.excessReturnPp + "pp" : "N/A";
         return (
           "<div class='cmr-row'><span><strong>" + r.symbol + "</strong>" +
           (watch.has(String(r.symbol).toUpperCase()) ? " ★" : "") +
@@ -97,4 +97,4 @@ sReturnPct || br.d90.excessReturnPp + "pp" : "N/A";
     try {
       const url = typeof input === "string" ? input : input && input.url;
       if (!url || !res.ok) return res;
-      if (url.in
+    

@@ -1,4 +1,4 @@
-cludes("/api/momentum/cron")) return res;
+  if (url.includes("/api/momentum/cron")) return res;
       // Side-effect only: never rewrite Response bodies (avoids Content-Length
       // truncation that crashed the React app with undefined.toLowerCase).
       if (url.includes("/api/high-frequency")) {
