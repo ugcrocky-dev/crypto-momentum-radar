@@ -1,6 +1,6 @@
 /**
  * Optional outbound notify for FOMO alerts.
- * Telegram, webhook, and Web Push when configured. Never places a trade.
+ * Telegram, webhook, Web Push, and ntfy when configured. Never places a trade.
  */
 
 import { sanitizeError } from "./freshness.js";
@@ -10,7 +10,14 @@ export function notifyConfigured() {
   const telegram = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
   const webhook = Boolean(process.env.ALERT_WEBHOOK_URL);
   const webpush = webPushConfigured();
-  return { telegram, webhook, webpush, any: telegram || webhook || webpush };
+  const ntfy = Boolean(process.env.NTFY_TOPIC);
+  return {
+    telegram,
+    webhook,
+    webpush,
+    ntfy,
+    any: telegram || webhook || webpush || ntfy,
+  };
 }
 
 export function formatFomoAlertText(alert) {
@@ -68,6 +75,29 @@ async function sendWebhook(alert, text) {
   return { ok: true, channel: "webhook" };
 }
 
+async function sendNtfy(alert, text) {
+  const topic = process.env.NTFY_TOPIC;
+  if (!topic) return { ok: false, skipped: "ntfy_unconfigured" };
+  const base = (process.env.NTFY_SERVER || "https://ntfy.sh").replace(/\/$/, "");
+  const url = `${base}/${topic}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Title: `FOMO CLEAR ${alert.symbol || "alert"}`,
+      Priority: "high",
+      Tags: "chart_with_upwards_trend,moneybag",
+      Click: "https://crypto-momentum-radar.vercel.app/",
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+    body: text,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`ntfy_http_${res.status}:${body.slice(0, 120)}`);
+  }
+  return { ok: true, channel: "ntfy", topic };
+}
+
 export async function notifyFomoAlert(alert) {
   const text = formatFomoAlertText(alert);
   const results = [];
@@ -87,6 +117,13 @@ export async function notifyFomoAlert(alert) {
       results.push(await sendWebhook(alert, text));
     } catch (err) {
       results.push({ ok: false, channel: "webhook", error: sanitizeError(err) });
+    }
+  }
+  if (cfg.ntfy) {
+    try {
+      results.push(await sendNtfy(alert, text));
+    } catch (err) {
+      results.push({ ok: false, channel: "ntfy", error: sanitizeError(err) });
     }
   }
   if (cfg.webpush) {
