@@ -2,6 +2,8 @@ import { sanitizeError } from "../../lib/freshness.js";
 import { runFomoImmediatePass } from "../../lib/fomoImmediate.js";
 
 function assertCronAuth(req) {
+  // Vercel marks scheduled invocations with this header.
+  if (req.headers["x-vercel-cron"] === "1") return true;
   const secret = process.env.CRON_SECRET;
   if (!secret) return true;
   const auth = req.headers.authorization || "";
