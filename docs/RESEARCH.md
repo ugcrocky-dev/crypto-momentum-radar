@@ -81,7 +81,8 @@ Cron (`/api/fomo-alerts/cron`, every minute) and an on-page poller watch [FOMO R
 | Channel | Env | Notes |
 |---|---|---|
 | In-app banner + browser Notification | none | Works when the site tab is open (all new alerts) |
-| Phone Web Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Tap **Enable alerts** on the site once |
+| Phone (ntfy) | `NTFY_TOPIC` | Open https://ntfy.sh/&lt;topic&gt; or the ntfy app — zero install on server |
+| Phone Web Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Tap **Enable alerts** when web-push is available |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional phone push for **clear** coins only |
 | Webhook | `ALERT_WEBHOOK_URL` | Optional POST JSON for **clear** coins only |
 
