@@ -16,11 +16,11 @@ jobs:
           set -euo pipefail
           cat .restore-pack/fg0.js .restore-pack/fg1.js .restore-pack/fg2.js .restore-pack/fg3.js .restore-pack/fg4.js .restore-pack/fg5.js .restore-pack/fg6.js .restore-pack/fg7.js > public/freshness-guard.js
           test -s public/freshness-guard.js
-          grep -q enablePhoneAlerts public/freshness-guard.js
-          grep -q "Enable alerts" public/freshness-guard.js
+          grep -q "ntfy.sh/cmr-fomo-veen113" public/freshness-guard.js
+          gzip -nc public/freshness-guard.js > public/freshness-guard.js.gz
           git config user.name "ugcrocky-dev"
           git config user.email "ugcrocky@gmail.com"
-          git add public/freshness-guard.js
+          git add public/freshness-guard.js public/freshness-guard.js.gz
           git status
-          git commit -m "fix: restore full freshness-guard with Enable alerts" || exit 0
+          git commit -m "feat: ntfy phone alerts for clear FOMO (zero npm deps)" || exit 0
           git push origin HEAD:cursor/fomo-immediate-alerts-ce62
