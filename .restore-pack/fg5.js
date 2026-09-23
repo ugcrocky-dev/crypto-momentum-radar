@@ -1,8 +1,6 @@
-"</div>";
-
-      html += "<div style='margin-top:10px'><strong>Immediate FOMO alerts</strong></div>";
-      html += "<div class='muted'>Clear GoPlus coins alert now. Tap <strong>Enable alerts</strong> for phone push. Auto-trade is off." +
-        (notify.any ? " Push channel ready." : " Server push arming…") +
+<strong>Immediate FOMO alerts</strong></div>";
+      html += "<div class='muted'>Clear GoPlus coins alert now. Phone: open <a href='https://ntfy.sh/cmr-fomo-veen113' target='_blank' rel='noopener'>ntfy.sh/cmr-fomo-veen113</a> (or ntfy app) · or tap Enable alerts. Auto-trade is off." +
+        (notify.any || notify.ntfy ? " Push armed." : "") +
         "</div>";
       if (!immediate.length) html += "<div class='muted'>No FOMO alerts yet — open this tab and wait for the 30s poller, or wait for cron.</div>";
       else html += immediate.slice(0, 8).map(trustedRowHtml).join("");
@@ -83,4 +81,4 @@
         const br = r.btcRelative || {};
         const d7 = br.d7 && br.d7.available ? br.d7.excessReturnPp + "pp / " + br.d7.coinBtcReturnPct + "%" : "N/A";
         const d30 = br.d30 && br.d30.available ? br.d30.excessReturnPp + "pp" : "N/A";
-        const d90 = br.d90 && br.d90.available ? br.d90.exces
+        const d90 = br.d90 && br.d90.available ? br.d90.excessReturnPct || br.d90.excessReturnPp + "pp" : "N/A";
