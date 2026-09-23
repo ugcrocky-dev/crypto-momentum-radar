@@ -6,7 +6,7 @@ let cache = { at: 0, body: null };
 
 /**
  * Unified product feed: FOMO trusted wallets + large DEX buys.
- * Hard gates on both. Copying stays off.
+ * Risky coins labeled only. Copying stays off.
  */
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
@@ -42,7 +42,6 @@ export default async function handler(req, res) {
         product: built.product,
         trustedWallets: built.trustedWallets,
         largeBuys: built.largeBuys,
-        hardGates: built.product.hardGates,
         copyingEnabled: false,
       },
     };
