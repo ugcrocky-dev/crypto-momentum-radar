@@ -74,6 +74,18 @@ Without keys, traction status is **`insufficient evidence`** (not bearish). AI m
 
 Default holdings: XRP, AERO, UNI, DOGE, HBAR, ARB, SOL, ETH (editable in research drawer; localStorage). No size/PnL inference.
 
+## Immediate FOMO alerts
+
+Cron (`/api/fomo-alerts/cron`, every minute) and an on-page poller watch [FOMO Robinhood Radar](https://fomoradar.app) for **new** trusted-wallet cohort names. The first pass seeds a baseline without blasting old names. Later new mints are stored, shown under Research → Whales, and optionally pushed.
+
+| Channel | Env | Notes |
+|---|---|---|
+| In-app banner + browser Notification | none | Works when the site tab is open |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional phone push |
+| Webhook | `ALERT_WEBHOOK_URL` | Optional POST JSON |
+
+`copyingEnabled` and `autoTrade` stay **false**. Risky coins may still be labeled. This is not automatic FOMO trading.
+
 ## Radar product (both feeds)
 
 One research product with two signal feeds. Copying stays off on both.
@@ -83,28 +95,13 @@ One research product with two signal feeds. Copying stays off on both.
 | Trusted wallets | [FOMO Robinhood Radar](https://fomoradar.app) public API | Named fomo.family traders on Robinhood Chain, cohort score / conviction / fresh launches |
 | Large DEX buys | GeckoTerminal | Buys ≥ $10k on Ethereum, BSC, Base — no wallet profit track record |
 
-Hard gates (GoPlus, including Robinhood chain id `4663`) run on both. Blocked and uncleared coins stay visible. Attribution to FOMO Radar is required; this app does not claim to be fomo.family or fomoradar.app. Trading money is not spent on paid whale APIs.
+GoPlus risk labels (mintable, unlocked LP, and similar) stay as awareness warnings only. Attribution to FOMO Radar is required. Trading money is not spent on paid whale APIs.
 
 Endpoint: `GET /api/radar-product`
 
 ## Whale alerts
 
-Large DEX buys from GeckoTerminal (Ethereum, BSC, Base), minimum $10,000. The bought asset is the trade's to-token. Stable-to-stable pools are skipped. Wallet profit history is **not** in this source — a repeat buy in the same scan is not a track record. Dollar size is marked unreliable when it exceeds pool reserves. Hard gates run on the bought contract and block copying only. `copyingEnabled` stays false. Prefer `/api/radar-product` for the combined product view.
-
-## Hard gates (copy block, not a hide)
-
-Hard gates decide whether a coin may be copied. They do not remove it from the leaderboard or the research list. Missing evidence fails closed.
-
-| Gate | Block when |
-|---|---|
-| Contract | honeypot, mintable, transfer pausable, hidden owner, owner can change balances, reclaim ownership, selfdestruct, blacklist function, modifiable tax, cannot buy, creator honeypot history, source not open |
-| Tax | buy or sell tax above 10% |
-| Liquidity lock | LP holders exist and locked share under 5%, or lock data missing |
-| Concentration | any non-excluded holder above 15%, top 10 above 50% after burn / lock / CEX / pair tags, or owner/creator supply above 15% |
-| Liquidity | known pool liquidity under $50,000, or liquidity missing |
-| Unscanned | no GoPlus result, error, unresolved id, or no EVM contract |
-
-Native L1s (BTC, ETH, SOL, and the other chain assets in `NATIVE_L1_SYMBOLS`) are exempt from ERC20 gates. That exemption is not a trade approval. `copyAllowed` stays false — this app does not send live orders. A clear gate only means the safety checks did not reject the coin.
+Large DEX buys from GeckoTerminal (Ethereum, BSC, Base), minimum $10,000. The bought asset is the trade's to-token. Stable-to-stable pools are skipped. Wallet profit history is **not** in this source. `copyingEnabled` stays false. Prefer `/api/radar-product` for the combined product view.
 
 ## Validation status
 
