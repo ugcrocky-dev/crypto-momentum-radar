@@ -1,1 +1,45 @@
-PLACEHOLDER
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
+  "crons": [
+    {
+      "path": "/api/momentum/cron",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/fomo-alerts/cron",
+      "schedule": "* * * * *"
+    }
+  ],
+  "functions": {
+    "api/early-setups.js": {
+      "maxDuration": 60
+    },
+    "api/momentum.js": {
+      "maxDuration": 60
+    },
+    "api/whale-alerts.js": {
+      "maxDuration": 60
+    },
+    "api/radar-product.js": {
+      "maxDuration": 60
+    },
+    "api/fomo-alerts.js": {
+      "maxDuration": 60
+    },
+    "api/fomo-alerts/cron.js": {
+      "maxDuration": 60
+    },
+    "api/push-subscribe.js": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}
