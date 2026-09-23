@@ -172,9 +172,11 @@
 
   function showBrowserFomoNotice(alert) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const clear = alert.risk && alert.risk.status === "clear" && !alert.risk.risky;
     try {
-      new Notification("FOMO " + (alert.symbol || "alert"), {
-        body: (alert.buyers || 0) + " trusted buyers · copying off",
+      new Notification((clear ? "FOMO CLEAR " : "FOMO ") + (alert.symbol || "alert"), {
+        body: (alert.buyers || 0) + " trusted buyers · " +
+          (clear ? "GoPlus clear · " : "") + "copying off",
         tag: alert.id || alert.tokenAddress,
       });
     } catch (_) {}
@@ -187,10 +189,15 @@
       el.innerHTML = "";
       return;
     }
-    const newest = alerts[0];
+    const clearFirst = alerts.find(function (a) {
+      return a.risk && a.risk.status === "clear" && !a.risk.risky;
+    });
+    const newest = clearFirst || alerts[0];
+    const clear = newest.risk && newest.risk.status === "clear" && !newest.risk.risky;
     el.dataset.show = "true";
     el.innerHTML =
-      "FOMO alert: <strong>" + esc(newest.symbol || "?") + "</strong> · " +
+      (clear ? "FOMO CLEAR: " : "FOMO alert: ") +
+      "<strong>" + esc(newest.symbol || "?") + "</strong> · " +
       (newest.buyers || 0) + " trusted" +
       "<small>Immediate cohort alert · copying off · not auto-trade · tap Research → Whales</small>";
   }
@@ -493,10 +500,10 @@
       let html = "<div class='muted'>" + esc(product.note || "Both feeds. Copying off.") + "</div>";
 
       html += "<div style='margin-top:10px'><strong>Immediate FOMO alerts</strong></div>";
-      html += "<div class='muted'>New trusted-wallet buys as they appear. Auto-trade is off." +
-        (notify.any ? " Push channel configured." : " Add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for phone push.") +
+      html += "<div class='muted'>Clear GoPlus coins alert now. Risky stay labeled. Auto-trade is off." +
+        (notify.any ? " Push channel configured for clear coins." : " Add TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID for phone push on clear coins.") +
         "</div>";
-      if (!immediate.length) html += "<div class='muted'>No stored FOMO alerts yet — watcher seeds on first cron, then alerts on new names.</div>";
+      if (!immediate.length) html += "<div class='muted'>No FOMO alerts yet — open this tab and wait for the 30s poller, or wait for cron.</div>";
       else html += immediate.slice(0, 8).map(trustedRowHtml).join("");
 
       html += "<div style='margin-top:12px'><strong>Trusted wallets</strong></div>";
