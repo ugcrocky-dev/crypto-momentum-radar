@@ -1,0 +1,25 @@
+name: assemble-fg
+on:
+  workflow_dispatch:
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/fomo-immediate-alerts-ce62
+      - name: Assemble freshness-guard.js
+        run: |
+          set -euo pipefail
+          cat .restore-pack/fg0.js .restore-pack/fg1.js .restore-pack/fg2.js .restore-pack/fg3.js .restore-pack/fg4.js .restore-pack/fg5.js .restore-pack/fg6.js .restore-pack/fg7.js > public/freshness-guard.js
+          test -s public/freshness-guard.js
+          grep -q enablePhoneAlerts public/freshness-guard.js
+          grep -q "Enable alerts" public/freshness-guard.js
+          git config user.name "ugcrocky-dev"
+          git config user.email "ugcrocky@gmail.com"
+          git add public/freshness-guard.js
+          git status
+          git commit -m "fix: restore full freshness-guard with Enable alerts" || exit 0
+          git push origin HEAD:cursor/fomo-immediate-alerts-ce62
