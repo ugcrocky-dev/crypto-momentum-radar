@@ -11,8 +11,5 @@
     "test": "node --test tests/*.test.js",
     "start": "npx serve public -p 3000",
     "validation": "node scripts/validation_forward.js"
-  },
-  "dependencies": {
-    "web-push": "^3.6.7"
   }
 }
