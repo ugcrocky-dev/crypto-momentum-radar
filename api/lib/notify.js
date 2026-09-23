@@ -13,11 +13,12 @@ export function notifyConfigured() {
 
 export function formatFomoAlertText(alert) {
   const who = (alert.who || []).slice(0, 6).join(", ");
+  const clear = alert.risk?.status === "clear" && !alert.risk?.risky;
   return [
     `FOMO ${alert.kind === "fresh" ? "FRESH" : "SIGNAL"}: ${alert.symbol || "?"}`,
+    clear ? "GoPlus: clear" : alert.risk?.label || "GoPlus: unscanned",
     `Buyers ${alert.buyers || 0} · score ${alert.avgScore != null ? Math.round(alert.avgScore) : "—"} · ${alert.usd != null ? `$${Math.round(alert.usd)}` : "—"}`,
     who ? `Who: ${who}` : null,
-    alert.risk?.label || null,
     "Copying OFF — research alert only",
     alert.tokenAddress ? `Mint: ${alert.tokenAddress}` : null,
     "via FOMO Robinhood Radar · crypto-momentum-radar",
