@@ -1,6 +1,7 @@
 /**
- * Immediate FOMO alerts: detect new trusted-wallet cohort buys, label risky coins,
- * persist, and optionally push. Never auto-trades.
+ * Immediate FOMO alerts: detect trusted-wallet cohort buys, label risky coins,
+ * persist, and optionally push. Prefer clear (non-risky) for outbound notify.
+ * Never auto-trades.
  */
 
 import {
@@ -14,9 +15,10 @@ import { attachRiskLabels } from "./whaleAlerts.js";
 import { notifyConfigured, notifyFomoAlert } from "./notify.js";
 import { sanitizeError } from "./freshness.js";
 
-const SEEN_KEY = "cmr:fomo-alert-seen:v1";
-const INIT_KEY = "cmr:fomo-alert-init:v1";
-const LIST_KEY = "cmr:fomo-alerts:v1";
+// v2: clear-preferred alerts (resets empty v1 baseline so clear FOMO can alert now)
+const SEEN_KEY = "cmr:fomo-alert-seen:v2";
+const INIT_KEY = "cmr:fomo-alert-init:v2";
+const LIST_KEY = "cmr:fomo-alerts:v2";
 const MAX_ALERTS = 40;
 const SEEN_TTL_SEC = 14 * 24 * 60 * 60;
 
@@ -28,6 +30,13 @@ const mem = {
 
 function alertId(row) {
   return `${row.kind || "signal"}:${String(row.tokenAddress || "").toLowerCase()}`;
+}
+
+function isClearRisk(risk) {
+  if (!risk) return false;
+  if (risk.risky) return false;
+  // Prefer known clear screens; skip unresolved/unscanned for outbound push
+  return risk.status === "clear";
 }
 
 async function loadSeen() {
@@ -103,21 +112,88 @@ async function markInitialized() {
   }
 }
 
-/**
- * Seed current FOMO universe as seen without notifying — avoids a first-run blast.
- */
-export async function seedFomoAlertBaseline(rows) {
-  const seen = await loadSeen();
-  for (const row of rows) {
-    seen.add(alertId(row));
+async function screenRows(rows, maxRiskChecks) {
+  if (!rows.length) return new Map();
+  const screened = await attachRiskLabels(
+    rows.map((row) => ({
+      symbol: row.symbol,
+      chainId: row.chainId,
+      tokenAddress: row.tokenAddress,
+    })),
+    { maxChecks: Math.min(maxRiskChecks, rows.length) }
+  );
+  return new Map(
+    screened.map((row) => [`${row.chainId}:${row.tokenAddress}`, row.risk])
+  );
+}
+
+function buildAlert(row, risk, nowIso) {
+  return {
+    ...row,
+    risk,
+    copyAllowed: false,
+    autoTrade: false,
+    alertedAt: nowIso,
+    id: alertId(row),
+  };
+}
+
+async function pushNotify(alerts, notify) {
+  const notifyResults = [];
+  if (!notify) return notifyResults;
+  for (const alert of alerts) {
+    // Outbound push only for GoPlus-clear coins. Risky stay in the list/UI.
+    if (!isClearRisk(alert.risk)) {
+      notifyResults.push({
+        id: alert.id,
+        sent: false,
+        reason: "skip_risky_or_unresolved",
+        risky: Boolean(alert.risk?.risky),
+        status: alert.risk?.status || null,
+      });
+      continue;
+    }
+    try {
+      notifyResults.push({ id: alert.id, ...(await notifyFomoAlert(alert)) });
+    } catch (err) {
+      notifyResults.push({ id: alert.id, sent: false, error: sanitizeError(err) });
+    }
   }
-  await saveSeen(seen);
-  await markInitialized();
-  return { seeded: seen.size };
+  return notifyResults;
 }
 
 /**
- * Poll FOMO feeds, emit alerts for new mints only. Copying stays off.
+ * Seed current FOMO universe as seen. Clear coins also become immediate alerts.
+ */
+export async function seedFomoAlertBaseline(rows, { riskByAddr, notify = true } = {}) {
+  const seen = await loadSeen();
+  const nowIso = new Date().toISOString();
+  const clearAlerts = [];
+  for (const row of rows) {
+    const id = alertId(row);
+    seen.add(id);
+    const risk = riskByAddr?.get(`${row.chainId}:${row.tokenAddress}`) || null;
+    if (isClearRisk(risk)) {
+      clearAlerts.push(buildAlert(row, risk, nowIso));
+    }
+  }
+  await saveSeen(seen);
+  if (clearAlerts.length) {
+    const existing = await loadAlerts();
+    await saveAlerts([...clearAlerts, ...existing].slice(0, MAX_ALERTS));
+  }
+  await markInitialized();
+  const notifyResults = await pushNotify(clearAlerts, notify);
+  return {
+    seeded: seen.size,
+    clearAlerts,
+    notifyResults,
+  };
+}
+
+/**
+ * Poll FOMO feeds. Clear coins alert (and optionally push). Risky stay labeled only.
+ * Copying stays off.
  */
 export async function runFomoImmediatePass({
   limit = 12,
@@ -129,18 +205,21 @@ export async function runFomoImmediatePass({
   const initialized = await isInitialized();
 
   if (!initialized) {
-    const seeded = await seedFomoAlertBaseline(rows);
+    const riskByAddr = await screenRows(rows, maxRiskChecks);
+    const seeded = await seedFomoAlertBaseline(rows, { riskByAddr, notify });
     return {
       ok: true,
       seeded: true,
-      newCount: 0,
-      alerts: [],
+      newCount: seeded.clearAlerts.length,
+      newAlerts: seeded.clearAlerts,
+      alerts: await loadAlerts(),
       seen: seeded.seeded,
       notify: notifyConfigured(),
+      notifyResults: seeded.notifyResults,
       copyingEnabled: false,
       autoTrade: false,
       errors: collected.errors || [],
-      note: "Baseline seeded. Next new FOMO fresh/signal will alert. No auto-trade.",
+      note: "Baseline seeded. Clear FOMO coins alerted now. Risky labeled only. No auto-trade.",
     };
   }
 
@@ -159,30 +238,12 @@ export async function runFomoImmediatePass({
     };
   }
 
-  const screened = await attachRiskLabels(
-    freshRows.map((row) => ({
-      symbol: row.symbol,
-      chainId: row.chainId,
-      tokenAddress: row.tokenAddress,
-    })),
-    { maxChecks: Math.min(maxRiskChecks, freshRows.length) }
-  );
-  const riskByAddr = new Map(
-    screened.map((row) => [`${row.chainId}:${row.tokenAddress}`, row.risk])
-  );
-
+  const riskByAddr = await screenRows(freshRows, maxRiskChecks);
   const nowIso = new Date().toISOString();
   const created = [];
   for (const row of freshRows) {
     const risk = riskByAddr.get(`${row.chainId}:${row.tokenAddress}`) || null;
-    const alert = {
-      ...row,
-      risk,
-      copyAllowed: false,
-      autoTrade: false,
-      alertedAt: nowIso,
-      id: alertId(row),
-    };
+    const alert = buildAlert(row, risk, nowIso);
     created.push(alert);
     seen.add(alert.id);
   }
@@ -192,22 +253,14 @@ export async function runFomoImmediatePass({
   await saveAlerts(merged);
   await saveSeen(seen);
 
-  const notifyResults = [];
-  if (notify) {
-    for (const alert of created) {
-      try {
-        notifyResults.push({ id: alert.id, ...(await notifyFomoAlert(alert)) });
-      } catch (err) {
-        notifyResults.push({ id: alert.id, sent: false, error: sanitizeError(err) });
-      }
-    }
-  }
+  const notifyResults = await pushNotify(created, notify);
 
   return {
     ok: true,
     seeded: false,
     newCount: created.length,
     newAlerts: created,
+    clearNotified: created.filter((a) => isClearRisk(a.risk)).length,
     alerts: merged,
     notify: notifyConfigured(),
     notifyResults,
@@ -225,3 +278,5 @@ export async function listFomoAlerts() {
     autoTrade: false,
   };
 }
+
+export { isClearRisk, alertId };
